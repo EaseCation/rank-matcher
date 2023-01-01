@@ -1,10 +1,11 @@
 mod arena;
+mod packet;
 
 use arena::Arena;
 use futures_channel::mpsc::{self, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use lockfree_cuckoohash::LockFreeCuckooHash;
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{env, net::SocketAddr, sync::Arc, str::FromStr};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 
@@ -47,8 +48,11 @@ async fn handle_connection(
             addr,
             msg.to_text().unwrap()
         );
+        let text = msg.to_text().unwrap();
+        let packet = packet::Packet::from_str(text);
+        println!("packet: {:?}", packet);
         
-        
+
         let peers = Arc::clone(&peer_map);
 
         future::ok(())
