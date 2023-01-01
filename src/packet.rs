@@ -1,32 +1,17 @@
-use std::{str::FromStr, collections::VecDeque};
+use std::{collections::VecDeque, str::FromStr};
 
 // 包，可以是收的也可以是发的
 #[derive(Debug)]
 pub enum Packet {
     AddArena(String),
     RemoveArena(String),
-    AddPlayer {
-        player: String,
-        arena: String,
-    },
-    RemovePlayer {
-        player: String,
-        arena: String,
-    },
+    AddPlayer { arena: String, player: String },
+    RemovePlayer { arena: String, player: String },
     GetState,
     SubscribeState,
-    MatchSuccess {
-        arena: String,
-        player: Vec<String>,        
-    },
-    MatchFailure {
-        arena: String,
-        player: Vec<String>,  
-    },
-    CommandFailure,
-    PacketFormatError {
-        error: String,
-    },
+    MatchSuccess { arena: String, players: Vec<String> },
+    MatchFailure { arena: String, players: Vec<String> },
+    FormatError { error: String },
 }
 
 // 包格式错误
@@ -36,7 +21,9 @@ pub struct PacketFormat(&'static str);
 impl FromStr for Packet {
     type Err = PacketFormat;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut reader = CharReader { inner: s.chars().collect() };
+        let mut reader = CharReader {
+            inner: s.chars().collect(),
+        };
         reader.read_packet()
     }
 }
@@ -47,20 +34,25 @@ struct CharReader {
 
 impl CharReader {
     #[inline]
-    fn read_packet(&mut self) -> Result<Packet, PacketFormat> {        
+    fn read_packet(&mut self) -> Result<Packet, PacketFormat> {
         match (self.inner.pop_front(), self.inner.pop_front()) {
             (Some('1'), Some(',')) => self.read_v1(),
-            _ => Err(PacketFormat("不支持除了1之外的版本号。"))
+            _ => Err(PacketFormat("不支持除了1之外的版本号。")),
         }
     }
     #[inline]
     fn read_v1(&mut self) -> Result<Packet, PacketFormat> {
         match (self.inner.pop_front(), self.inner.pop_front()) {
             (Some('1'), Some(',')) => self.read_v1_add_arena(),
-            // (Some('2'), Some(',')) => self.handle_v1_text(text),
-            // (Some('3'), Some(',')) => self.handle_v1_chan(text),
-            // (Some('4'), Some(',')) => self.handle_v1_disconnect(text),
-            _ => Err(PacketFormat("不支持除了1-9之外的包类别。"))
+            (Some('2'), Some(',')) => self.read_v1_remove_arena(),
+            (Some('3'), Some(',')) => self.read_v1_add_player(),
+            (Some('4'), Some(',')) => self.read_v1_remove_player(),
+            (Some('5'), _) => self.read_v1_get_state(),
+            (Some('6'), _) => self.read_v1_subscribe_state(),
+            (Some('7'), Some(',')) => self.read_v1_match_success(),
+            (Some('8'), Some(',')) => self.read_v1_match_failure(),
+            (Some('9'), Some(',')) => self.read_v1_format_error(),
+            _ => Err(PacketFormat("不支持除了1-9之外的包类别。")),
         }
     }
     #[inline]
@@ -69,7 +61,7 @@ impl CharReader {
         while let Some(c) = cur {
             if c.to_digit(10).is_some() {
                 break;
-            } 
+            }
             cur = self.inner.pop_front();
         }
         let mut ans = 0;
@@ -81,7 +73,7 @@ impl CharReader {
             } else {
                 return ans;
             }
-        };
+        }
         return ans;
     }
     #[inline]
@@ -99,5 +91,55 @@ impl CharReader {
     fn read_v1_add_arena(&mut self) -> Result<Packet, PacketFormat> {
         let arena = self.read_string();
         Ok(Packet::AddArena(arena))
+    }
+    #[inline]
+    fn read_v1_remove_arena(&mut self) -> Result<Packet, PacketFormat> {
+        let arena = self.read_string();
+        Ok(Packet::RemoveArena(arena))
+    }
+    #[inline]
+    fn read_v1_add_player(&mut self) -> Result<Packet, PacketFormat> {
+        let arena = self.read_string();
+        let player = self.read_string();
+        Ok(Packet::AddPlayer { arena, player })
+    }
+    #[inline]
+    fn read_v1_remove_player(&mut self) -> Result<Packet, PacketFormat> {
+        let arena = self.read_string();
+        let player = self.read_string();
+        Ok(Packet::RemovePlayer { arena, player })
+    }
+    #[inline]
+    fn read_v1_get_state(&mut self) -> Result<Packet, PacketFormat> {
+        Ok(Packet::GetState)
+    }
+    #[inline]
+    fn read_v1_subscribe_state(&mut self) -> Result<Packet, PacketFormat> {
+        Ok(Packet::SubscribeState)
+    }
+    #[inline]
+    fn read_v1_match_success(&mut self) -> Result<Packet, PacketFormat> {
+        let arena = self.read_string();
+        let number = self.read_number();
+        let mut players = Vec::with_capacity(number as usize);
+        for _ in 0..number {
+            players.push(self.read_string());
+        }
+        Ok(Packet::MatchSuccess { arena, players })
+    }
+    #[inline]
+    fn read_v1_match_failure(&mut self) -> Result<Packet, PacketFormat> {
+        let arena = self.read_string();
+        let number = self.read_number();
+        let mut players = Vec::with_capacity(number as usize);
+        for _ in 0..number {
+            players.push(self.read_string());
+        }
+        Ok(Packet::MatchFailure { arena, players })
+    }
+    #[inline]
+    fn read_v1_format_error(&mut self) -> Result<Packet, PacketFormat> {
+        let error = self.read_string();
+        Ok(Packet::FormatError { error })
     }
 }

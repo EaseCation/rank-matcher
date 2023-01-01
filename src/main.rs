@@ -5,7 +5,7 @@ use arena::Arena;
 use futures_channel::mpsc::{self, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use lockfree_cuckoohash::LockFreeCuckooHash;
-use std::{env, net::SocketAddr, sync::Arc, str::FromStr};
+use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 
@@ -51,7 +51,6 @@ async fn handle_connection(
         let text = msg.to_text().unwrap();
         let packet = packet::Packet::from_str(text);
         println!("packet: {:?}", packet);
-        
 
         let peers = Arc::clone(&peer_map);
 
