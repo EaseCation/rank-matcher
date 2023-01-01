@@ -5,6 +5,7 @@ use arena::Arena;
 use futures_channel::mpsc::{self, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use lockfree_cuckoohash::LockFreeCuckooHash;
+use packet::Packet;
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
@@ -43,14 +44,49 @@ async fn handle_connection(
     let (outgoing, incoming) = ws_stream.split();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
-        println!(
-            "Received a message from {}: {}",
-            addr,
-            msg.to_text().unwrap()
-        );
         let text = msg.to_text().unwrap();
-        let packet = packet::Packet::from_str(text);
-        println!("packet: {:?}", packet);
+        let packet = Packet::from_str(text);
+        match packet {
+            Ok(Packet::AddArena(arena)) => {
+                let replaced = arenas.insert_if_not_exists(arena.clone(), Arena::new());
+                if replaced {
+                    println!("地址{addr}已添加新的匹配池{arena}。");
+                } else {
+                    println!("地址{addr}正在添加新的匹配池{arena}，此匹配池已存在。")
+                }
+            },
+            Ok(Packet::RemoveArena(arena)) => {
+                let removed = arenas.remove(&arena);
+                if removed {
+                    println!("地址{addr}已删除匹配池{arena}。");
+                } else {
+                    println!("地址{addr}正在删除匹配池{arena}，此匹配池已不存在。")
+                }
+            },
+            Ok(Packet::AddPlayer { arena, player, rank }) => {
+                let guard = lockfree_cuckoohash::pin();
+                let try_arena = arenas.get(&arena, &guard);
+                if let Some(arena_) = try_arena {
+                    arena_.insert(player.clone(), rank as usize);
+                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}）。");
+                } else {
+                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}），但此匹配池不存在。");
+                }
+                drop(guard);
+            },
+            Ok(Packet::RemovePlayer { arena, player }) => {
+                let guard = lockfree_cuckoohash::pin();
+                let try_arena = arenas.get(&arena, &guard);
+                if let Some(arena_) = try_arena {
+                    arena_.remove(&player);
+                    println!("地址{addr}成功从匹配池{arena}删除玩家{player}。");
+                } else {
+                    println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
+                }
+                drop(guard);
+            },
+            _ => todo!()
+        }
 
         let peers = Arc::clone(&peer_map);
 

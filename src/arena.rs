@@ -23,11 +23,11 @@ impl<T> Arena<T>
 where
     T: Hash + Eq,
 {
-    pub fn insert(&mut self, id: T, rank: usize) -> Option<(usize, usize)> {
+    pub fn insert(&self, id: T, rank: usize) -> Option<(usize, usize)> {
         self.players.insert(id, (rank, rank))
     }
 
-    pub fn remove<Q>(&mut self, id: &Q) -> Option<(usize, usize)>
+    pub fn remove<Q>(&self, id: &Q) -> Option<(usize, usize)>
     where
         T: Borrow<Q>,
         Q: Hash + Eq,
@@ -40,7 +40,7 @@ impl<T> Arena<T>
 where
     T: Hash + Eq,
 {
-    pub fn rank_update(&mut self) {
+    pub fn rank_update(&self) {
         for mut player in self.players.iter_mut() {
             let (min_rank_i, max_rank_i) = player.value_mut();
             if *min_rank_i > usize::min_value() {

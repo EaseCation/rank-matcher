@@ -5,13 +5,28 @@ use std::{collections::VecDeque, str::FromStr};
 pub enum Packet {
     AddArena(String),
     RemoveArena(String),
-    AddPlayer { arena: String, player: String },
-    RemovePlayer { arena: String, player: String },
+    AddPlayer {
+        arena: String,
+        player: String,
+        rank: u64,
+    },
+    RemovePlayer {
+        arena: String,
+        player: String,
+    },
     GetState,
     SubscribeState,
-    MatchSuccess { arena: String, players: Vec<String> },
-    MatchFailure { arena: String, players: Vec<String> },
-    FormatError { error: String },
+    MatchSuccess {
+        arena: String,
+        players: Vec<String>,
+    },
+    MatchFailure {
+        arena: String,
+        players: Vec<String>,
+    },
+    FormatError {
+        error: String,
+    },
 }
 
 // 包格式错误
@@ -101,7 +116,12 @@ impl CharReader {
     fn read_v1_add_player(&mut self) -> Result<Packet, PacketFormat> {
         let arena = self.read_string();
         let player = self.read_string();
-        Ok(Packet::AddPlayer { arena, player })
+        let rank = self.read_number();
+        Ok(Packet::AddPlayer {
+            arena,
+            player,
+            rank,
+        })
     }
     #[inline]
     fn read_v1_remove_player(&mut self) -> Result<Packet, PacketFormat> {
