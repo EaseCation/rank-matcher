@@ -7,7 +7,7 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use lockfree_cuckoohash::LockFreeCuckooHash;
 use packet::Packet;
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{time, net::{TcpListener, TcpStream}};
 use tungstenite::protocol::Message;
 
 // 客户端，也就是大厅服务器
@@ -102,6 +102,15 @@ async fn handle_connection(
     peer_map.remove(&addr);
 }
 
+async fn rank_timer() {
+    let mut interval = time::interval(time::Duration::from_secs(1));
+    println!("排位定时器开始工作！");
+    loop { // todo: 收到信号停止
+        println!("+1s");
+        interval.tick().await;
+    }
+}
+
 #[tokio::main]
 async fn main() {
     println!("启动排位匹配服务器……");
@@ -121,6 +130,9 @@ async fn main() {
     };
     println!("正在监听的地址是{}。", addr);
 
+    tokio::spawn(rank_timer());
+
+    println!("开始接受排位客户端（大厅服务器）连接！");
     while let Ok((stream, addr)) = listener.accept().await {
         tokio::spawn(handle_connection(
             Arc::clone(&state),
