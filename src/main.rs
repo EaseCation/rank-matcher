@@ -12,7 +12,7 @@ use tungstenite::protocol::Message;
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
 
-// 所有游戏列表
+// 所有匹配池的列表
 type Arenas = Arc<LockFreeCuckooHash<String, Arena<String>>>;
 
 async fn handle_connection(
@@ -47,6 +47,8 @@ async fn handle_connection(
             addr,
             msg.to_text().unwrap()
         );
+        
+        
         let peers = Arc::clone(&peer_map);
 
         future::ok(())

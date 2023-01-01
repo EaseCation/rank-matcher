@@ -2,6 +2,7 @@
 use dashmap::DashMap;
 use std::{borrow::Borrow, hash::Hash, sync::Arc};
 
+// 一个匹配池
 #[derive(Clone)]
 pub struct Arena<T> {
     players: Arc<DashMap<T, (usize, usize)>>,
