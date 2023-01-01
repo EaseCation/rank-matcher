@@ -12,9 +12,12 @@ use tungstenite::protocol::Message;
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
 
+// 所有游戏列表
+type Arenas = Arc<LockFreeCuckooHash<String, Arena<String>>>;
+
 async fn handle_connection(
     peer_map: PeerMap,
-    arena: Arena<String>,
+    arenas: Arenas,
     raw_stream: TcpStream,
     addr: SocketAddr,
 ) {
@@ -63,7 +66,7 @@ async fn main() {
     println!("启动排位匹配服务器……");
 
     let state = Arc::new(LockFreeCuckooHash::new());
-    let arena = Arena::new();
+    let arenas = Arc::new(LockFreeCuckooHash::new());
 
     let addr = env::args()
         .nth(1)
@@ -80,7 +83,7 @@ async fn main() {
     while let Ok((stream, addr)) = listener.accept().await {
         tokio::spawn(handle_connection(
             Arc::clone(&state),
-            arena.clone(),
+            Arc::clone(&arenas),
             stream,
             addr,
         ));
