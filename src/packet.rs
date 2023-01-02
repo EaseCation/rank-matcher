@@ -3,7 +3,10 @@ use std::{collections::VecDeque, str::FromStr};
 // 包，可以是收的也可以是发的
 #[derive(Debug)]
 pub enum Packet {
-    AddArena(String),
+    AddArena {
+        arena: String,
+        num_players: u64,
+    },
     RemoveArena(String),
     AddPlayer {
         arena: String,
@@ -105,7 +108,8 @@ impl CharReader {
     #[inline]
     fn read_v1_add_arena(&mut self) -> Result<Packet, PacketFormat> {
         let arena = self.read_string();
-        Ok(Packet::AddArena(arena))
+        let num_players = self.read_number();
+        Ok(Packet::AddArena { arena, num_players })
     }
     #[inline]
     fn read_v1_remove_arena(&mut self) -> Result<Packet, PacketFormat> {

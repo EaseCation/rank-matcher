@@ -18,8 +18,8 @@ use tungstenite::protocol::Message;
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
 
-// 所有匹配池的列表
-type Arenas = Arc<dashmap::DashMap<String, Arena<String>>>;
+// 所有匹配池的列表。u64是这个匹配池一局的玩家数，超过这个数就匹配成功
+type Arenas = Arc<dashmap::DashMap<String, (u64, Arena<String>)>>;
 
 async fn handle_connection(
     peer_map: PeerMap,
@@ -51,10 +51,10 @@ async fn handle_connection(
         let text = msg.to_text().unwrap();
         let packet = Packet::from_str(text);
         match packet {
-            Ok(Packet::AddArena(arena)) => {
+            Ok(Packet::AddArena { arena, num_players }) => {
                 let entry = arenas.entry(arena.clone());
-                entry.or_insert_with(|| Arena::new());
-                println!("地址{addr}已注册匹配池{arena}。");
+                entry.or_insert_with(|| (num_players, Arena::new()));
+                println!("地址{addr}已注册匹配池{arena}，达到{num_players}位玩家时，此匹配池将返回匹配结果。");
             },
             Ok(Packet::RemoveArena(arena)) => {
                 let removed = arenas.remove(&arena);
@@ -67,7 +67,7 @@ async fn handle_connection(
             Ok(Packet::AddPlayer { arena, player, rank }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    arena_.insert(player.clone(), rank as usize);
+                    arena_.1.insert(player.clone(), rank as usize);
                     println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}）。");
                 } else {
                     println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}），但此匹配池不存在。");
@@ -76,7 +76,7 @@ async fn handle_connection(
             Ok(Packet::RemovePlayer { arena, player }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    arena_.remove(&player);
+                    arena_.1.remove(&player);
                     println!("地址{addr}成功从匹配池{arena}删除玩家{player}。");
                 } else {
                     println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
@@ -105,8 +105,12 @@ async fn rank_timer(arenas: Arenas) {
     loop {
         // todo: 收到信号停止
         println!("+1s");
-        for arena in arenas.iter() {
-            // if arena.rank_match()
+        for arena_ref in arenas.iter() {
+            let (num_players, arena) = &*arena_ref;
+            let matched = arena.rank_match();
+            if matched.len() >= *num_players as usize {
+                // 匹配成功
+            }
             arena.rank_update();
         }
         interval.tick().await;
