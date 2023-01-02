@@ -34,7 +34,7 @@ pub enum Packet {
 
 // 包格式错误
 #[derive(Debug)]
-pub struct PacketFormat(&'static str);
+pub struct PacketFormat(pub &'static str);
 
 impl FromStr for Packet {
     type Err = PacketFormat;
@@ -68,12 +68,14 @@ impl CharWriter {
         self.inner.push_back('1'); // version
         match packet {
             Packet::AddArena { arena, num_players } => {
-                self.write_string("1");
+                self.inner.push_back(',');
+                self.inner.push_back('1');
                 self.write_string(&arena);
                 self.write_number(*num_players);
             }
             Packet::RemoveArena(arena) => {
-                self.write_string("2");
+                self.inner.push_back(',');
+                self.inner.push_back('2');
                 self.write_string(&arena);
             }
             Packet::AddPlayer {
@@ -81,24 +83,29 @@ impl CharWriter {
                 player,
                 rank,
             } => {
-                self.write_string("3");
+                self.inner.push_back(',');
+                self.inner.push_back('3');
                 self.write_string(&arena);
                 self.write_string(&player);
                 self.write_number(*rank);
             }
             Packet::RemovePlayer { arena, player } => {
-                self.write_string("4");
+                self.inner.push_back(',');
+                self.inner.push_back('4');
                 self.write_string(&arena);
                 self.write_string(&player);
             }
             Packet::GetState => {
-                self.write_string("5");
+                self.inner.push_back(',');
+                self.inner.push_back('5');
             }
             Packet::SubscribeState => {
-                self.write_string("6");
+                self.inner.push_back(',');
+                self.inner.push_back('6');
             }
             Packet::MatchSuccess { arena, players } => {
-                self.write_string("7");
+                self.inner.push_back(',');
+                self.inner.push_back('7');
                 self.write_string(&arena);
                 self.write_number(players.len() as u64);
                 for player in players {
@@ -106,7 +113,8 @@ impl CharWriter {
                 }
             }
             Packet::MatchFailure { arena, players } => {
-                self.write_string("8");
+                self.inner.push_back(',');
+                self.inner.push_back('8');
                 self.write_string(&arena);
                 self.write_number(players.len() as u64);
                 for player in players {
@@ -114,7 +122,8 @@ impl CharWriter {
                 }
             }
             Packet::FormatError { error } => {
-                self.write_string("9");
+                self.inner.push_back(',');
+                self.inner.push_back('9');
                 self.write_string(&error);
             }
         }
