@@ -46,6 +46,95 @@ impl FromStr for Packet {
     }
 }
 
+impl ToString for Packet {
+    fn to_string(&self) -> String {
+        let mut writer = CharWriter {
+            inner: VecDeque::new(),
+        };
+        writer.write_packet(self);
+        let mut ans = String::new();
+        ans.extend(writer.inner);
+        ans
+    }
+}
+
+struct CharWriter {
+    inner: VecDeque<char>,
+}
+
+impl CharWriter {
+    #[inline]
+    fn write_packet(&mut self, packet: &Packet) {
+        self.inner.push_back('1'); // version
+        match packet {
+            Packet::AddArena { arena, num_players } => {
+                self.write_string("1");
+                self.write_string(&arena);
+                self.write_number(*num_players);
+            }
+            Packet::RemoveArena(arena) => {
+                self.write_string("2");
+                self.write_string(&arena);
+            }
+            Packet::AddPlayer {
+                arena,
+                player,
+                rank,
+            } => {
+                self.write_string("3");
+                self.write_string(&arena);
+                self.write_string(&player);
+                self.write_number(*rank);
+            }
+            Packet::RemovePlayer { arena, player } => {
+                self.write_string("4");
+                self.write_string(&arena);
+                self.write_string(&player);
+            }
+            Packet::GetState => {
+                self.write_string("5");
+            }
+            Packet::SubscribeState => {
+                self.write_string("6");
+            }
+            Packet::MatchSuccess { arena, players } => {
+                self.write_string("7");
+                self.write_string(&arena);
+                self.write_number(players.len() as u64);
+                for player in players {
+                    self.write_string(&player);
+                }
+            }
+            Packet::MatchFailure { arena, players } => {
+                self.write_string("8");
+                self.write_string(&arena);
+                self.write_number(players.len() as u64);
+                for player in players {
+                    self.write_string(&player);
+                }
+            }
+            Packet::FormatError { error } => {
+                self.write_string("9");
+                self.write_string(&error);
+            }
+        }
+    }
+    #[inline]
+    fn write_number(&mut self, number: u64) {
+        // 以后再优化吧
+        let string = format!(",{}", number);
+        self.inner
+            .extend(string.chars().collect::<VecDeque<char>>());
+    }
+    #[inline]
+    fn write_string(&mut self, string: &str) {
+        self.write_number(string.len() as u64);
+        self.inner.push_back(',');
+        self.inner
+            .extend(string.chars().collect::<VecDeque<char>>());
+    }
+}
+
 struct CharReader {
     inner: VecDeque<char>,
 }

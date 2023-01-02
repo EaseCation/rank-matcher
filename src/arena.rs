@@ -65,6 +65,9 @@ where
             max_rank = usize::max(max_rank, max_rank_i);
             min_rank = usize::min(min_rank, min_rank_i);
         }
+        if max_rank < min_rank {
+            return Vec::new();
+        }
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
         for player in self.players.iter() {
             let (min_rank_i, max_rank_i) = player.value();

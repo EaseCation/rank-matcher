@@ -16,14 +16,17 @@ use tungstenite::protocol::Message;
 
 // 客户端，也就是大厅服务器
 type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
+type Peers = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
+// 哪个玩家是哪个大厅服务器记录的
+type Senders = Arc<LockFreeCuckooHash<String, SocketAddr>>;
 
 // 所有匹配池的列表。u64是这个匹配池一局的玩家数，超过这个数就匹配成功
 type Arenas = Arc<dashmap::DashMap<String, (u64, Arena<String>)>>;
 
 async fn handle_connection(
-    peer_map: PeerMap,
+    peer_map: Peers,
     arenas: Arenas,
+    senders: Senders,
     raw_stream: TcpStream,
     addr: SocketAddr,
 ) {
@@ -52,9 +55,13 @@ async fn handle_connection(
         let packet = Packet::from_str(text);
         match packet {
             Ok(Packet::AddArena { arena, num_players }) => {
-                let entry = arenas.entry(arena.clone());
-                entry.or_insert_with(|| (num_players, Arena::new()));
-                println!("地址{addr}已注册匹配池{arena}，达到{num_players}位玩家时，此匹配池将返回匹配结果。");
+                if num_players == 0 {
+                    println!("地址{addr}尝试注册匹配池{arena}，但匹配池的每局玩家数为0，创建失败！");
+                } else {
+                    let entry = arenas.entry(arena.clone());
+                    entry.or_insert_with(|| (num_players, Arena::new()));
+                    println!("地址{addr}已注册匹配池{arena}，达到{num_players}位玩家时，此匹配池将返回匹配结果。");
+                }
             },
             Ok(Packet::RemoveArena(arena)) => {
                 let removed = arenas.remove(&arena);
@@ -68,6 +75,7 @@ async fn handle_connection(
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
                     arena_.1.insert(player.clone(), rank as usize);
+                    senders.insert(player.clone(), addr);
                     println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}）。");
                 } else {
                     println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}），但此匹配池不存在。");
@@ -77,15 +85,15 @@ async fn handle_connection(
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
                     arena_.1.remove(&player);
+                    senders.remove(&player);
                     println!("地址{addr}成功从匹配池{arena}删除玩家{player}。");
                 } else {
                     println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
                 }
             },
+            Err(e) => println!("地址{addr}发送的包发生了格式错误：{e:?}"),
             _ => todo!()
         }
-
-        let peers = Arc::clone(&peer_map);
 
         future::ok(())
     });
@@ -99,17 +107,55 @@ async fn handle_connection(
     peer_map.remove(&addr);
 }
 
-async fn rank_timer(arenas: Arenas) {
+async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
     let mut interval = time::interval(time::Duration::from_secs(1));
     println!("排位定时器开始工作！");
     loop {
-        // todo: 收到信号停止
-        println!("+1s");
         for arena_ref in arenas.iter() {
-            let (num_players, arena) = &*arena_ref;
+            let (num_players, arena) = arena_ref.value();
             let matched = arena.rank_match();
             if matched.len() >= *num_players as usize {
                 // 匹配成功
+                println!(
+                    "匹配池{}成功匹配了{}位玩家：{:?}",
+                    arena_ref.key(),
+                    matched.len(),
+                    matched
+                );
+                let collected: DashMap<SocketAddr, Vec<String>> = DashMap::new();
+                let guard = lockfree_cuckoohash::pin();
+                for player in matched.clone() {
+                    let try_addr = senders.get(&player, &guard);
+                    if let Some(addr) = try_addr {
+                        collected
+                            .entry(addr.clone())
+                            .and_modify(|v| v.push(player.clone()))
+                            .or_insert_with(|| vec![player.clone()]);
+                    }
+                }
+                drop(guard);
+                for item_collected in collected {
+                    let (addr, players) = item_collected;
+                    println!("发送给地址{addr}的玩家列表：{:?}", players);
+                    let packet = Packet::MatchSuccess {
+                        arena: arena_ref.key().clone(),
+                        players,
+                    };
+                    let string = packet.to_string();
+                    let guard = lockfree_cuckoohash::pin();
+                    if let Some(peer) = peers.get(&addr, &guard) {
+                        let try_send = peer.unbounded_send(Message::Text(string));
+                        if let Err(e) = try_send {
+                            println!("内部错误：{e}");
+                        }
+                    }
+                    drop(guard);
+                }
+                let guard = lockfree_cuckoohash::pin();
+                for player in matched {
+                    arena.remove(&player);
+                }
+                drop(guard);
             }
             arena.rank_update();
         }
@@ -121,8 +167,9 @@ async fn rank_timer(arenas: Arenas) {
 async fn main() {
     println!("启动排位匹配服务器……");
 
-    let state = Arc::new(LockFreeCuckooHash::new());
+    let peers = Arc::new(LockFreeCuckooHash::new());
     let arenas = Arc::new(DashMap::new());
+    let senders = Arc::new(LockFreeCuckooHash::new());
 
     let addr = env::args()
         .nth(1)
@@ -136,13 +183,18 @@ async fn main() {
     };
     println!("正在监听的地址是{}。", addr);
 
-    tokio::spawn(rank_timer(Arc::clone(&arenas)));
+    tokio::spawn(rank_timer(
+        Arc::clone(&peers),
+        Arc::clone(&arenas),
+        Arc::clone(&senders),
+    ));
 
     println!("开始接受排位客户端（大厅服务器）连接！");
     while let Ok((stream, addr)) = listener.accept().await {
         tokio::spawn(handle_connection(
-            Arc::clone(&state),
+            Arc::clone(&peers),
             Arc::clone(&arenas),
+            Arc::clone(&senders),
             stream,
             addr,
         ));
