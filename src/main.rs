@@ -181,7 +181,7 @@ async fn main() {
 
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| "[::1]:12310".to_string());
+        .unwrap_or_else(|| "[::]:12310".to_string());
     let try_socket = TcpListener::bind(&addr).await;
     let listener = match try_socket {
         Ok(s) => s,
