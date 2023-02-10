@@ -21,6 +21,7 @@ pub enum Packet {
     SubscribeState,
     MatchSuccess {
         arena: String,
+        // stage_request_id: u64,  // 请求创建房间的requestId，然后交给各个nk去轮询检查房间是否创建成功
         players: Vec<String>,
     },
     MatchFailure {
