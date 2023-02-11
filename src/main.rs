@@ -18,7 +18,7 @@ use tungstenite::protocol::Message;
 type Tx = UnboundedSender<Message>;
 type Peers = Arc<LockFreeCuckooHash<SocketAddr, Tx>>;
 // 哪个玩家是哪个大厅服务器记录的
-type Senders = Arc<LockFreeCuckooHash<String, SocketAddr>>;
+type Senders = Arc<dashmap::DashMap<String, SocketAddr>>;
 
 // 所有匹配池的列表。u64是这个匹配池一局的玩家数，超过这个数就匹配成功
 type Arenas = Arc<dashmap::DashMap<String, (u64, Arena<String>)>>;
@@ -112,7 +112,23 @@ async fn handle_connection(
     future::select(broadcast_incoming, receive_from_others).await;
 
     println!("地址{}已经断开WebSocket连接。", &addr);
+    let mut players = Vec::new();
+    for sender_ref in senders.iter() {
+        if sender_ref.value() == &addr {
+            let player = sender_ref.key();
+            players.push(player.clone());
+        }
+    }
+    for player in players.iter() {
+        for arena_ref in arenas.iter() {
+            arena_ref.value().1.remove(player);
+        }
+    }
+    senders.retain(|_player, addr_for_this_player| &addr != addr_for_this_player);
+    println!("已移除从地址{}注册的玩家，列表是：{:?}。", addr, players);
+
     peer_map.remove(&addr);
+    println!("地址{}已经从排位匹配服务器解除注册，再见！", addr);
 }
 
 async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
@@ -131,9 +147,8 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     matched
                 );
                 let collected: DashMap<SocketAddr, Vec<String>> = DashMap::new();
-                let guard = lockfree_cuckoohash::pin();
                 for player in matched.clone() {
-                    let try_addr = senders.get(&player, &guard);
+                    let try_addr = senders.get(&player);
                     if let Some(addr) = try_addr {
                         collected
                             .entry(addr.clone())
@@ -141,7 +156,6 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                             .or_insert_with(|| vec![player.clone()]);
                     }
                 }
-                drop(guard);
                 for item_collected in collected {
                     let (addr, players) = item_collected;
                     println!("发送给地址{addr}的玩家列表：{:?}", players);
@@ -160,10 +174,13 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     drop(guard);
                 }
                 let guard = lockfree_cuckoohash::pin();
-                for player in matched {
-                    arena.remove(&player);
+                for player in &matched {
+                    arena.remove(player);
                 }
                 drop(guard);
+                for player in &matched {
+                    senders.remove(player);
+                }
             }
             arena.rank_update();
         }
@@ -177,7 +194,7 @@ async fn main() {
 
     let peers = Arc::new(LockFreeCuckooHash::new());
     let arenas = Arc::new(DashMap::new());
-    let senders = Arc::new(LockFreeCuckooHash::new());
+    let senders = Arc::new(DashMap::new());
 
     let addr = env::args()
         .nth(1)
