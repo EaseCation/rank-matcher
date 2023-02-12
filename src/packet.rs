@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, str::FromStr};
 
+use dashmap::DashMap;
+
 // 包，可以是收的也可以是发的
 #[derive(Debug)]
 pub enum Packet {
@@ -17,8 +19,14 @@ pub enum Packet {
         arena: String,
         player: String,
     },
-    GetState,
-    SubscribeState,
+    GetOrSubscribeState {
+        // 0 => 立即返回，并且以后不再发送, 非0 => 每隔多少秒返回一次
+        period: u64,
+    },
+    ConnectionState {
+        // 玩家名称 => (匹配池名称, 已经匹配的人数)
+        player_info: DashMap<String, (String, u64)>,
+    },
     MatchSuccess {
         arena: String,
         // stage_request_id: u64,  // 请求创建房间的requestId，然后交给各个nk去轮询检查房间是否创建成功
@@ -96,13 +104,22 @@ impl CharWriter {
                 self.write_string(&arena);
                 self.write_string(&player);
             }
-            Packet::GetState => {
+            Packet::GetOrSubscribeState { period } => {
                 self.inner.push_back(',');
                 self.inner.push_back('5');
+                self.write_number(*period);
             }
-            Packet::SubscribeState => {
+            Packet::ConnectionState { player_info } => {
                 self.inner.push_back(',');
                 self.inner.push_back('6');
+                self.write_number(player_info.len() as u64);
+                for info in player_info {
+                    let player = info.key();
+                    let (arena, num_matched) = info.value();
+                    self.write_string(player);
+                    self.write_string(arena);
+                    self.write_number(*num_matched);
+                }
             }
             Packet::MatchSuccess { arena, players } => {
                 self.inner.push_back(',');
@@ -164,8 +181,8 @@ impl CharReader {
             (Some('2'), Some(',')) => self.read_v1_remove_arena(),
             (Some('3'), Some(',')) => self.read_v1_add_player(),
             (Some('4'), Some(',')) => self.read_v1_remove_player(),
-            (Some('5'), _) => self.read_v1_get_state(),
-            (Some('6'), _) => self.read_v1_subscribe_state(),
+            (Some('5'), Some(',')) => self.read_v1_get_or_subscribe_state(),
+            (Some('6'), Some(',')) => self.read_v1_connection_state(),
             (Some('7'), Some(',')) => self.read_v1_match_success(),
             (Some('8'), Some(',')) => self.read_v1_match_failure(),
             (Some('9'), Some(',')) => self.read_v1_format_error(),
@@ -233,12 +250,21 @@ impl CharReader {
         Ok(Packet::RemovePlayer { arena, player })
     }
     #[inline]
-    fn read_v1_get_state(&mut self) -> Result<Packet, PacketFormat> {
-        Ok(Packet::GetState)
+    fn read_v1_get_or_subscribe_state(&mut self) -> Result<Packet, PacketFormat> {
+        let period = self.read_number();
+        Ok(Packet::GetOrSubscribeState { period })
     }
     #[inline]
-    fn read_v1_subscribe_state(&mut self) -> Result<Packet, PacketFormat> {
-        Ok(Packet::SubscribeState)
+    fn read_v1_connection_state(&mut self) -> Result<Packet, PacketFormat> {
+        let number = self.read_number();
+        let player_info = DashMap::with_capacity(number as usize);
+        for _ in 0..number {
+            let player = self.read_string();
+            let arena = self.read_string();
+            let num_matched = self.read_number();
+            player_info.insert(player, (arena, num_matched));
+        }
+        Ok(Packet::ConnectionState { player_info })
     }
     #[inline]
     fn read_v1_match_success(&mut self) -> Result<Packet, PacketFormat> {

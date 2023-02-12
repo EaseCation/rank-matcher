@@ -91,6 +91,9 @@ async fn handle_connection(
                     println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
                 }
             },
+            // Ok(Packet::GetOrSubscribeState { period }) => {
+            //     todo!()
+            // },
             Err(e) => {
                 println!("地址{addr}发送的包发生了格式错误：{}", e.0);
                 let packet = Packet::FormatError { error: e.0.to_string() };
