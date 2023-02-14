@@ -50,7 +50,7 @@ async fn handle_connection(
 
     // 反馈定时器
     let (mut dur_tx, dur_rx) = mpsc::channel(1);
-    let state_feedback = state_feedback_timer(tx.clone(), dur_rx);
+    let state_feedback = state_feedback_timer(tx.clone(), Arc::clone(&arenas), dur_rx);
 
     // websocket流和处理函数
     let (outgoing, incoming) = ws_stream.split();
@@ -120,7 +120,7 @@ async fn handle_connection(
                     println!("内部错误：{e}");
                 }
             },
-            _ => todo!()
+            _ => println!("内部错误：客户端发送了非法包格式！"),
         }
 
         future::ok(())
@@ -157,7 +157,11 @@ async fn handle_connection(
     println!("地址{}已经从排位匹配服务器解除注册，再见！", addr);
 }
 
-async fn state_feedback_timer(peer: Tx, mut period: mpsc::Receiver<Option<time::Duration>>) {
+async fn state_feedback_timer(
+    peer: Tx,
+    arenas: Arenas,
+    mut period: mpsc::Receiver<Option<time::Duration>>,
+) {
     println!("排位状态反馈服务开始工作！");
     let mut last_duration = None;
     loop {
@@ -166,9 +170,15 @@ async fn state_feedback_timer(peer: Tx, mut period: mpsc::Receiver<Option<time::
             // Ok(None) 关闭管道来退出定时器
             Ok(None) => break,
             // Err(_) 管道中暂未收到数据
-            Err(_) => {},
+            Err(_) => {}
         }
         if let Some(duration) = last_duration {
+            // let player_info = DashMap::new();
+            // for arena_ref in arenas.iter() {
+            //     let (_num_players, arena) = arena_ref.value();
+
+            // }
+            // let packet = Packet::ConnectionState { player_info };
             println!("tick {:?}", duration);
             let string = "tick".to_string(); // todo
             let try_send = peer.unbounded_send(Message::Text(string));

@@ -34,6 +34,14 @@ where
     {
         self.players.remove(id).map(|(_k, v)| v)
     }
+
+    // pub fn get<Q>(&self, key: &Q) -> Option<&(usize, usize, usize)>
+    // where
+    //     T: Borrow<Q>,
+    //     Q: Hash + Eq + ?Sized,
+    // {
+    //     self.players.get(key).clone()
+    // }
 }
 
 impl<T> Arena<T>
