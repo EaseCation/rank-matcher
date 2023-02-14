@@ -71,14 +71,14 @@ async fn handle_connection(
                     println!("地址{addr}正在删除匹配池{arena}，此匹配池已不存在。")
                 }
             },
-            Ok(Packet::AddPlayer { arena, player, rank }) => {
+            Ok(Packet::AddPlayer { arena, player, rank, length }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    arena_.1.insert(player.clone(), rank as usize);
+                    arena_.1.insert(player.clone(), rank as usize, length as usize);
                     senders.insert(player.clone(), addr);
-                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}）。");
+                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}，数量为{length}）。");
                 } else {
-                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}），但此匹配池不存在。");
+                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}，数量为{length}），但此匹配池不存在。");
                 }
             },
             Ok(Packet::RemovePlayer { arena, player }) => {
@@ -141,7 +141,8 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
         for arena_ref in arenas.iter() {
             let (num_players, arena) = arena_ref.value();
             let matched = arena.rank_match();
-            if matched.len() >= *num_players as usize {
+            let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
+            if num_matched >= *num_players as usize {
                 // 匹配成功
                 println!(
                     "匹配池{}成功匹配了{}位玩家：{:?}",
@@ -149,14 +150,14 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     matched.len(),
                     matched
                 );
-                let collected: DashMap<SocketAddr, Vec<String>> = DashMap::new();
-                for player in matched.clone() {
+                let collected: DashMap<SocketAddr, Vec<(String, u64)>> = DashMap::new();
+                for (player, length) in matched.clone() {
                     let try_addr = senders.get(&player);
                     if let Some(addr) = try_addr {
                         collected
                             .entry(addr.clone())
-                            .and_modify(|v| v.push(player.clone()))
-                            .or_insert_with(|| vec![player.clone()]);
+                            .and_modify(|v| v.push((player.clone(), length as u64)))
+                            .or_insert_with(|| vec![(player.clone(), length as u64)]);
                     }
                 }
                 for item_collected in collected {
@@ -177,11 +178,11 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     drop(guard);
                 }
                 let guard = lockfree_cuckoohash::pin();
-                for player in &matched {
+                for (player, _length) in &matched {
                     arena.remove(player);
                 }
                 drop(guard);
-                for player in &matched {
+                for (player, _length) in &matched {
                     senders.remove(player);
                 }
             }

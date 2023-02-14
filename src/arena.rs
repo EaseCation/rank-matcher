@@ -5,7 +5,7 @@ use std::{borrow::Borrow, hash::Hash, sync::Arc};
 // 一个匹配池
 #[derive(Clone)]
 pub struct Arena<T> {
-    players: Arc<DashMap<T, (usize, usize)>>,
+    players: Arc<DashMap<T, (usize, usize, usize)>>,
 }
 
 impl<T> Arena<T>
@@ -23,11 +23,11 @@ impl<T> Arena<T>
 where
     T: Hash + Eq,
 {
-    pub fn insert(&self, id: T, rank: usize) -> Option<(usize, usize)> {
-        self.players.insert(id, (rank, rank))
+    pub fn insert(&self, id: T, rank: usize, length: usize) -> Option<(usize, usize, usize)> {
+        self.players.insert(id, (rank, rank, length))
     }
 
-    pub fn remove<Q>(&self, id: &Q) -> Option<(usize, usize)>
+    pub fn remove<Q>(&self, id: &Q) -> Option<(usize, usize, usize)>
     where
         T: Borrow<Q>,
         Q: Hash + Eq,
@@ -42,7 +42,7 @@ where
 {
     pub fn rank_update(&self) {
         for mut player in self.players.iter_mut() {
-            let (min_rank_i, max_rank_i) = player.value_mut();
+            let (min_rank_i, max_rank_i, _length) = player.value_mut();
             if *min_rank_i > usize::min_value() {
                 *min_rank_i -= 1;
             }
@@ -57,11 +57,11 @@ impl<T> Arena<T>
 where
     T: Hash + Eq + Clone,
 {
-    pub fn rank_match(&self) -> Vec<T> {
+    pub fn rank_match(&self) -> Vec<(T, usize)> {
         let mut max_rank = usize::min_value();
         let mut min_rank = usize::max_value();
         for player in self.players.iter() {
-            let (min_rank_i, max_rank_i) = *player;
+            let (min_rank_i, max_rank_i, _length) = *player;
             max_rank = usize::max(max_rank, max_rank_i);
             min_rank = usize::min(min_rank, min_rank_i);
         }
@@ -70,11 +70,11 @@ where
         }
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
         for player in self.players.iter() {
-            let (min_rank_i, max_rank_i) = player.value();
+            let (min_rank_i, max_rank_i, length) = player.value();
             let index_l = min_rank_i - min_rank;
             let index_r = max_rank_i - min_rank + 1;
-            cnt[index_l] += 1;
-            cnt[index_r] -= 1;
+            cnt[index_l] += *length as isize;
+            cnt[index_r] -= *length as isize;
         }
         let mut max_cnt = isize::min_value();
         let mut max_cnt_i = 0;
@@ -89,9 +89,9 @@ where
         let mut ans = Vec::new();
         for player in self.players.iter() {
             let id = player.key().clone();
-            let (min_rank_i, max_rank_i) = player.value();
+            let (min_rank_i, max_rank_i, length) = player.value();
             if *min_rank_i <= target_rank && target_rank <= *max_rank_i {
-                ans.push(id)
+                ans.push((id, *length))
             }
         }
         ans
