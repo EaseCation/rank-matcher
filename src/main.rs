@@ -48,9 +48,14 @@ async fn handle_connection(
     let (tx, rx) = mpsc::unbounded();
     peer_map.insert(addr, tx.clone());
 
+    // 反馈定时器
+    let (mut dur_tx, dur_rx) = mpsc::channel(1);
+    let state_feedback = state_feedback_timer(tx.clone(), dur_rx);
+
+    // websocket流和处理函数
     let (outgoing, incoming) = ws_stream.split();
 
-    let broadcast_incoming = incoming.try_for_each(|msg| {
+    let process_incoming = incoming.try_for_each(|msg| {
         let text = msg.to_text().unwrap();
         let packet = Packet::from_str(text);
         match packet {
@@ -91,9 +96,21 @@ async fn handle_connection(
                     println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
                 }
             },
-            // Ok(Packet::GetOrSubscribeState { period }) => {
-            //     todo!()
-            // },
+            Ok(Packet::GetOrSubscribeState { period }) => {
+                let period = if period == 0 {
+                    None
+                } else {
+                    Some(time::Duration::from_secs(period))
+                };
+                match dur_tx.try_send(period) {
+                    Ok(_) => if let Some(duration) = period {
+                        println!("地址{addr}修改订阅周期为{}秒", duration.as_secs())
+                    } else {
+                        println!("地址{addr}已取消订阅")
+                    },
+                    Err(e) => println!("内部错误：{e}"),
+                }
+            },
             Err(e) => {
                 println!("地址{addr}发送的包发生了格式错误：{}", e.0);
                 let packet = Packet::FormatError { error: e.0.to_string() };
@@ -111,10 +128,16 @@ async fn handle_connection(
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
-    pin_mut!(broadcast_incoming, receive_from_others);
-    future::select(broadcast_incoming, receive_from_others).await;
+    pin_mut!(process_incoming, receive_from_others);
+    tokio::spawn(state_feedback);
+    future::select(process_incoming, receive_from_others).await;
 
     println!("地址{}已经断开WebSocket连接。", &addr);
+
+    // 关闭排位反馈定时器
+    dur_tx.close_channel();
+
+    // 移除此连接的玩家
     let mut players = Vec::new();
     for sender_ref in senders.iter() {
         if sender_ref.value() == &addr {
@@ -132,6 +155,33 @@ async fn handle_connection(
 
     peer_map.remove(&addr);
     println!("地址{}已经从排位匹配服务器解除注册，再见！", addr);
+}
+
+async fn state_feedback_timer(peer: Tx, mut period: mpsc::Receiver<Option<time::Duration>>) {
+    println!("排位状态反馈服务开始工作！");
+    let mut last_duration = None;
+    loop {
+        match period.try_next() {
+            Ok(Some(duration)) => last_duration = duration,
+            // Ok(None) 关闭管道来退出定时器
+            Ok(None) => break,
+            // Err(_) 管道中暂未收到数据
+            Err(_) => {},
+        }
+        if let Some(duration) = last_duration {
+            println!("tick {:?}", duration);
+            let string = "tick".to_string(); // todo
+            let try_send = peer.unbounded_send(Message::Text(string));
+            if let Err(e) = try_send {
+                println!("内部错误：{e}");
+            }
+            time::sleep(duration).await;
+        } else {
+            // 传入None定时器休眠
+            tokio::task::yield_now().await;
+        }
+    }
+    println!("排位状态反馈服务停止工作！");
 }
 
 async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
