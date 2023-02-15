@@ -116,8 +116,8 @@ public class RankMatcherClient {
         sender.sendAsyncMessage(msg, f -> {});
     }
 
-    public void addPlayer(String arenaName, String playerName, int score) {
-        Message msg = AddPlayerMessage.of(arenaName, playerName, score);
+    public void addPlayer(String arenaName, String playerName, int score, int length) {
+        Message msg = AddPlayerMessage.of(arenaName, playerName, score, length);
         sender.sendAsyncMessage(msg, f -> {});
     }
 
@@ -138,7 +138,7 @@ public class RankMatcherClient {
     }
 
     public void registerMatchFailureHandler(MatchFailureHandler handler) {
-        this.receiver.addHandler(MessageType.MATCH_FAILURE, MatchSuccessMessage.class, msg -> {
+        this.receiver.addHandler(MessageType.MATCH_FAILURE, MatchFailureMessage.class, msg -> {
             handler.onMatchFailure(msg.getArena(), msg.getPlayers());
         });
     }
@@ -150,7 +150,7 @@ public class RankMatcherClient {
     }
 
     public interface MatchSuccessHandler {
-        void onMatchSuccess(String arenaName, String[] playerNames);
+        void onMatchSuccess(String arenaName, List<Tuple<String, Integer>> playerNames);
     }
 
     public interface MatchFailureHandler {
