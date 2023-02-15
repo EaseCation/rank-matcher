@@ -1,20 +1,17 @@
 package net.easecation.rankmatcher.api.message;
 
-import lombok.Data;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageType;
 
-@Data
-public class MatchSuccessMessage implements Message {
+public class MatchFailureMessage implements Message {
 
     private String arena;
     private String[] players;
+    //private String reason;
 
-    public static MatchSuccessMessage of(String arena, String[] player) {
-        MatchSuccessMessage message = new MatchSuccessMessage();
-        message.arena = arena;
-        message.players = player;
-        return message;
+    @Override
+    public MessageType getMessageType() {
+        return MessageType.MATCH_FAILURE;
     }
 
     @Override
@@ -37,9 +34,12 @@ public class MatchSuccessMessage implements Message {
         return sb.toString();
     }
 
-    @Override
-    public MessageType getMessageType() {
-        return MessageType.MATCH_SUCCESS;
+    public String getArena() {
+        return arena;
+    }
+
+    public String[] getPlayers() {
+        return players;
     }
 
 }

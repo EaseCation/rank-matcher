@@ -17,17 +17,17 @@ public class MessageReceiver {
         this.client = client;
     }
 
-    public void addHandler(MessageType type, MessageHandler handler) {
+    public <T extends Message> void addHandler(MessageType type, Class<T> clazz, MessageHandler<T> handler) {
         handlers.put(type, handler);
     }
 
     public <T extends Message> void receive(T message) {
-        MessageHandler handler = handlers.get(message.getMessageType());
+        MessageHandler<T> handler = handlers.get(message.getMessageType());
         if (handler != null) handler.handle(message);
     }
 
-    public interface MessageHandler {
-        <T extends Message> void handle(T message);
+    public interface MessageHandler<T extends Message> {
+        void handle(T message);
     }
 
 }

@@ -12,22 +12,25 @@ import io.netty.handler.codec.http.websocketx.WebSocketClientProtocolHandler;
 import io.netty.handler.codec.http.websocketx.WebSocketFrameAggregator;
 import io.netty.handler.codec.http.websocketx.WebSocketVersion;
 import lombok.extern.log4j.Log4j2;
+import net.easecation.eccommons.adt.Tuple;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageReceiver;
 import net.easecation.rankmatcher.api.MessageSender;
+import net.easecation.rankmatcher.api.MessageType;
+import net.easecation.rankmatcher.api.message.*;
 import net.easecation.rankmatcher.network.MessageCodec;
 import net.easecation.rankmatcher.network.MessageHandler;
 
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Log4j2
 public class RankMatcherClient {
 
     private final EventLoopGroup loopGroup = new NioEventLoopGroup();
     private Channel channel = null;
-    private boolean isHandshake = false;
     private MessageSender sender;
     private final MessageReceiver receiver;
     private final URI websocketURI;
@@ -39,9 +42,7 @@ public class RankMatcherClient {
     /*
      * name 用与 向服务端发起1h握手协议时必须带的参数
      * */
-    public RankMatcherClient(String name, URI websocketURI) {
-        if (name == null || name.isEmpty()) throw new IllegalArgumentException("带个 name 参数啊");
-        this.name = name;
+    public RankMatcherClient(URI websocketURI) {
         if (websocketURI == null) {
             throw new IllegalArgumentException("url不能为空");
         }
@@ -50,26 +51,12 @@ public class RankMatcherClient {
         this.receiver = new MessageReceiver(this);
     }
 
-    private String name;
-
-    String getName() {
-        return name;
-    }
-
     public MessageSender getSender() {
         return sender;
     }
 
     public MessageReceiver getReceiver() {
         return receiver;
-    }
-
-    public boolean isHandshake() {
-        return isHandshake;
-    }
-
-    public void setHandshake(boolean handshake) {
-        isHandshake = handshake;
     }
 
     public List<Message> getInitChannelMessages() {
@@ -116,4 +103,62 @@ public class RankMatcherClient {
     public boolean isActive() {
         return channel != null && channel.isActive();
     }
+
+    // 业务API ============
+
+    public void addArena(String arenaName, int numPlayers) {
+        Message msg = AddArenaMessage.of(arenaName, numPlayers);
+        sender.sendAsyncMessage(msg, f -> {});
+    }
+
+    public void removeArena(String arenaName) {
+        Message msg = AddArenaMessage.of(arenaName, 0);
+        sender.sendAsyncMessage(msg, f -> {});
+    }
+
+    public void addPlayer(String arenaName, String playerName, int score) {
+        Message msg = AddPlayerMessage.of(arenaName, playerName, score);
+        sender.sendAsyncMessage(msg, f -> {});
+    }
+
+    public void removePlayer(String arenaName, String playerName) {
+        Message msg = RemovePlayerMessage.of(arenaName, playerName);
+        sender.sendAsyncMessage(msg, f -> {});
+    }
+
+    public void getOrSubscribeState(int period) {
+        Message msg = GetOrSubscribeStateMessage.of(period);
+        sender.sendAsyncMessage(msg, f -> {});
+    }
+
+    public void registerMatchSuccessHandler(MatchSuccessHandler handler) {
+        this.receiver.addHandler(MessageType.MATCH_SUCCESS, MatchSuccessMessage.class, msg -> {
+            handler.onMatchSuccess(msg.getArena(), msg.getPlayers());
+        });
+    }
+
+    public void registerMatchFailureHandler(MatchFailureHandler handler) {
+        this.receiver.addHandler(MessageType.MATCH_FAILURE, MatchSuccessMessage.class, msg -> {
+            handler.onMatchFailure(msg.getArena(), msg.getPlayers());
+        });
+    }
+
+    public void registerConnectionStateHandler(ConnectionStateHandler handler) {
+        this.receiver.addHandler(MessageType.CONNECTION_STATE, ConnectionStateMessage.class, msg -> {
+            handler.onConnectionState(msg.getPlayerInfo());
+        });
+    }
+
+    public interface MatchSuccessHandler {
+        void onMatchSuccess(String arenaName, String[] playerNames);
+    }
+
+    public interface MatchFailureHandler {
+        void onMatchFailure(String arenaName, String[] playerNames);
+    }
+
+    public interface ConnectionStateHandler {
+        void onConnectionState(Map<String, Tuple<String, Integer>> playerInfo);
+    }
+
 }

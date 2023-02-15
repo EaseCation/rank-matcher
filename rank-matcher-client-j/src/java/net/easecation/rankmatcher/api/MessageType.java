@@ -6,8 +6,8 @@ public enum MessageType {
     REMOVE_ARENA("2"),
     ADD_PLAYER("3"),
     REMOVE_PLAYER("4"),
-    GET_STATE("5"),
-    SUBSCRIBE_STATE("6"),
+    GET_OR_SUBSCRIBE_STATE("5"),
+    CONNECTION_STATE("6"),
     MATCH_SUCCESS("7"),
     MATCH_FAILURE("8"),
     FORMAT_ERROR("9");
