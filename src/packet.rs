@@ -14,6 +14,8 @@ pub enum Packet {
         arena: String,
         player: String,
         rank: u64,
+        // 通常是1。用于按队伍为单位匹配时，以队长的名义和分数匹配，此时length为队伍成员的数量
+        length: u64,
     },
     RemovePlayer {
         arena: String,
@@ -30,11 +32,13 @@ pub enum Packet {
     MatchSuccess {
         arena: String,
         // stage_request_id: u64,  // 请求创建房间的requestId，然后交给各个nk去轮询检查房间是否创建成功
-        players: Vec<String>,
+        // String是玩家的名称，u64是队伍内玩家的个数。u64通常是1
+        // 若不为1表示String为队长的名字
+        players: Vec<(String, u64)>,
     },
     MatchFailure {
         arena: String,
-        players: Vec<String>,
+        players: Vec<(String, u64)>,
     },
     FormatError {
         error: String,
@@ -91,12 +95,14 @@ impl CharWriter {
                 arena,
                 player,
                 rank,
+                length,
             } => {
                 self.inner.push_back(',');
                 self.inner.push_back('3');
                 self.write_string(&arena);
                 self.write_string(&player);
                 self.write_number(*rank);
+                self.write_number(*length);
             }
             Packet::RemovePlayer { arena, player } => {
                 self.inner.push_back(',');
@@ -126,8 +132,9 @@ impl CharWriter {
                 self.inner.push_back('7');
                 self.write_string(&arena);
                 self.write_number(players.len() as u64);
-                for player in players {
+                for (player, length) in players {
                     self.write_string(&player);
+                    self.write_number(*length)
                 }
             }
             Packet::MatchFailure { arena, players } => {
@@ -135,8 +142,9 @@ impl CharWriter {
                 self.inner.push_back('8');
                 self.write_string(&arena);
                 self.write_number(players.len() as u64);
-                for player in players {
+                for (player, length) in players {
                     self.write_string(&player);
+                    self.write_number(*length)
                 }
             }
             Packet::FormatError { error } => {
@@ -237,10 +245,12 @@ impl CharReader {
         let arena = self.read_string();
         let player = self.read_string();
         let rank = self.read_number();
+        let length = self.read_number();
         Ok(Packet::AddPlayer {
             arena,
             player,
             rank,
+            length,
         })
     }
     #[inline]
@@ -272,7 +282,9 @@ impl CharReader {
         let number = self.read_number();
         let mut players = Vec::with_capacity(number as usize);
         for _ in 0..number {
-            players.push(self.read_string());
+            let player = self.read_string();
+            let length = self.read_number();
+            players.push((player, length));
         }
         Ok(Packet::MatchSuccess { arena, players })
     }
@@ -282,7 +294,9 @@ impl CharReader {
         let number = self.read_number();
         let mut players = Vec::with_capacity(number as usize);
         for _ in 0..number {
-            players.push(self.read_string());
+            let player = self.read_string();
+            let length = self.read_number();
+            players.push((player, length));
         }
         Ok(Packet::MatchFailure { arena, players })
     }

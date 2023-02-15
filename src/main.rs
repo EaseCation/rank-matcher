@@ -48,9 +48,14 @@ async fn handle_connection(
     let (tx, rx) = mpsc::unbounded();
     peer_map.insert(addr, tx.clone());
 
+    // 反馈定时器
+    let (mut dur_tx, dur_rx) = mpsc::channel(1);
+    let state_feedback = state_feedback_timer(tx.clone(), Arc::clone(&arenas), dur_rx);
+
+    // websocket流和处理函数
     let (outgoing, incoming) = ws_stream.split();
 
-    let broadcast_incoming = incoming.try_for_each(|msg| {
+    let process_incoming = incoming.try_for_each(|msg| {
         let text = msg.to_text().unwrap();
         let packet = Packet::from_str(text);
         match packet {
@@ -71,14 +76,14 @@ async fn handle_connection(
                     println!("地址{addr}正在删除匹配池{arena}，此匹配池已不存在。")
                 }
             },
-            Ok(Packet::AddPlayer { arena, player, rank }) => {
+            Ok(Packet::AddPlayer { arena, player, rank, length }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    arena_.1.insert(player.clone(), rank as usize);
+                    arena_.1.insert(player.clone(), rank as usize, length as usize);
                     senders.insert(player.clone(), addr);
-                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}）。");
+                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}，数量为{length}）。");
                 } else {
-                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}），但此匹配池不存在。");
+                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}，数量为{length}），但此匹配池不存在。");
                 }
             },
             Ok(Packet::RemovePlayer { arena, player }) => {
@@ -91,9 +96,21 @@ async fn handle_connection(
                     println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
                 }
             },
-            // Ok(Packet::GetOrSubscribeState { period }) => {
-            //     todo!()
-            // },
+            Ok(Packet::GetOrSubscribeState { period }) => {
+                let period = if period == 0 {
+                    None
+                } else {
+                    Some(time::Duration::from_secs(period))
+                };
+                match dur_tx.try_send(period) {
+                    Ok(_) => if let Some(duration) = period {
+                        println!("地址{addr}修改订阅周期为{}秒", duration.as_secs())
+                    } else {
+                        println!("地址{addr}已取消订阅")
+                    },
+                    Err(e) => println!("内部错误：{e}"),
+                }
+            },
             Err(e) => {
                 println!("地址{addr}发送的包发生了格式错误：{}", e.0);
                 let packet = Packet::FormatError { error: e.0.to_string() };
@@ -103,7 +120,7 @@ async fn handle_connection(
                     println!("内部错误：{e}");
                 }
             },
-            _ => todo!()
+            _ => println!("内部错误：客户端发送了非法包格式！"),
         }
 
         future::ok(())
@@ -111,10 +128,16 @@ async fn handle_connection(
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
-    pin_mut!(broadcast_incoming, receive_from_others);
-    future::select(broadcast_incoming, receive_from_others).await;
+    pin_mut!(process_incoming, receive_from_others);
+    tokio::spawn(state_feedback);
+    future::select(process_incoming, receive_from_others).await;
 
     println!("地址{}已经断开WebSocket连接。", &addr);
+
+    // 关闭排位反馈定时器
+    dur_tx.close_channel();
+
+    // 移除此连接的玩家
     let mut players = Vec::new();
     for sender_ref in senders.iter() {
         if sender_ref.value() == &addr {
@@ -134,6 +157,43 @@ async fn handle_connection(
     println!("地址{}已经从排位匹配服务器解除注册，再见！", addr);
 }
 
+async fn state_feedback_timer(
+    peer: Tx,
+    arenas: Arenas,
+    mut period: mpsc::Receiver<Option<time::Duration>>,
+) {
+    println!("排位状态反馈服务开始工作！");
+    let mut last_duration = None;
+    loop {
+        match period.try_next() {
+            Ok(Some(duration)) => last_duration = duration,
+            // Ok(None) 关闭管道来退出定时器
+            Ok(None) => break,
+            // Err(_) 管道中暂未收到数据
+            Err(_) => {}
+        }
+        if let Some(duration) = last_duration {
+            // let player_info = DashMap::new();
+            // for arena_ref in arenas.iter() {
+            //     let (_num_players, arena) = arena_ref.value();
+
+            // }
+            // let packet = Packet::ConnectionState { player_info };
+            println!("tick {:?}", duration);
+            let string = "tick".to_string(); // todo
+            let try_send = peer.unbounded_send(Message::Text(string));
+            if let Err(e) = try_send {
+                println!("内部错误：{e}");
+            }
+            time::sleep(duration).await;
+        } else {
+            // 传入None定时器休眠
+            tokio::task::yield_now().await;
+        }
+    }
+    println!("排位状态反馈服务停止工作！");
+}
+
 async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
     let mut interval = time::interval(time::Duration::from_secs(1));
     println!("排位定时器开始工作！");
@@ -141,7 +201,8 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
         for arena_ref in arenas.iter() {
             let (num_players, arena) = arena_ref.value();
             let matched = arena.rank_match();
-            if matched.len() >= *num_players as usize {
+            let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
+            if num_matched >= *num_players as usize {
                 // 匹配成功
                 println!(
                     "匹配池{}成功匹配了{}位玩家：{:?}",
@@ -149,14 +210,14 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     matched.len(),
                     matched
                 );
-                let collected: DashMap<SocketAddr, Vec<String>> = DashMap::new();
-                for player in matched.clone() {
+                let collected: DashMap<SocketAddr, Vec<(String, u64)>> = DashMap::new();
+                for (player, length) in matched.clone() {
                     let try_addr = senders.get(&player);
                     if let Some(addr) = try_addr {
                         collected
                             .entry(addr.clone())
-                            .and_modify(|v| v.push(player.clone()))
-                            .or_insert_with(|| vec![player.clone()]);
+                            .and_modify(|v| v.push((player.clone(), length as u64)))
+                            .or_insert_with(|| vec![(player.clone(), length as u64)]);
                     }
                 }
                 for item_collected in collected {
@@ -177,11 +238,11 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     drop(guard);
                 }
                 let guard = lockfree_cuckoohash::pin();
-                for player in &matched {
+                for (player, _length) in &matched {
                     arena.remove(player);
                 }
                 drop(guard);
-                for player in &matched {
+                for (player, _length) in &matched {
                     senders.remove(player);
                 }
             }
