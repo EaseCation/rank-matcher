@@ -50,7 +50,7 @@ async fn handle_connection(
 
     // 反馈定时器
     let (mut dur_tx, dur_rx) = mpsc::channel(1);
-    let state_feedback = state_feedback_timer(tx.clone(), Arc::clone(&arenas), dur_rx);
+    let state_feedback = state_feedback_timer(tx.clone(), Arc::clone(&arenas), addr, dur_rx);
 
     // websocket流和处理函数
     let (outgoing, incoming) = ws_stream.split();
@@ -151,7 +151,10 @@ async fn handle_connection(
         }
     }
     senders.retain(|_player, addr_for_this_player| &addr != addr_for_this_player);
-    println!("[客户端]({}) 已移除该客户端注册的玩家，列表是：{:?}。", addr, players);
+    println!(
+        "[客户端]({}) 已移除该客户端注册的玩家，列表是：{:?}。",
+        addr, players
+    );
 
     peer_map.remove(&addr);
     println!("[客户端]({}) 已经从排位匹配服务器解除注册，再见！", addr);
@@ -160,9 +163,10 @@ async fn handle_connection(
 async fn state_feedback_timer(
     peer: Tx,
     arenas: Arenas,
+    addr: SocketAddr,
     mut period: mpsc::Receiver<Option<time::Duration>>,
 ) {
-    println!("排位状态反馈服务开始工作！");
+    println!("地址{addr}的排位状态反馈服务开始工作！");
     let mut last_duration = None;
     loop {
         match period.try_next() {
@@ -173,14 +177,21 @@ async fn state_feedback_timer(
             Err(_) => {}
         }
         if let Some(duration) = last_duration {
-            // let player_info = DashMap::new();
-            // for arena_ref in arenas.iter() {
-            //     let (_num_players, arena) = arena_ref.value();
-
-            // }
-            // let packet = Packet::ConnectionState { player_info };
-            println!("tick {:?}", duration);
-            let string = "tick".to_string(); // todo
+            let player_info = DashMap::new();
+            for arena_ref in arenas.iter() {
+                let (_num_players, arena) = arena_ref.value();
+                for state in arena.get_player_states().iter() {
+                    let player = state.key();
+                    let current_count = state.value();
+                    player_info.insert(
+                        player.to_string(),
+                        (arena_ref.key().to_string(), *current_count),
+                    );
+                }
+            }
+            println!("向{}发送排位反馈状态:{:?}", addr, player_info);
+            let packet = Packet::ConnectionState { player_info };
+            let string = packet.to_string();
             let try_send = peer.unbounded_send(Message::Text(string));
             if let Err(e) = try_send {
                 println!("内部错误：{e}");
@@ -191,7 +202,7 @@ async fn state_feedback_timer(
             tokio::task::yield_now().await;
         }
     }
-    println!("排位状态反馈服务停止工作！");
+    println!("地址{addr}的排位状态反馈服务停止工作！");
 }
 
 async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
