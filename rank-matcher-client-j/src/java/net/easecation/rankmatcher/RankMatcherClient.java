@@ -22,7 +22,6 @@ import net.easecation.rankmatcher.network.MessageCodec;
 import net.easecation.rankmatcher.network.MessageHandler;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -34,10 +33,6 @@ public class RankMatcherClient {
     private MessageSender sender;
     private final MessageReceiver receiver;
     private final URI websocketURI;
-    /**
-     * 在连接成功前，
-     */
-    private final List<Message> initChannelMessages = new ArrayList<>();
 
     /*
      * name 用与 向服务端发起1h握手协议时必须带的参数
@@ -57,10 +52,6 @@ public class RankMatcherClient {
 
     public MessageReceiver getReceiver() {
         return receiver;
-    }
-
-    public List<Message> getInitChannelMessages() {
-        return initChannelMessages;
     }
 
     public void start() throws Exception {
@@ -83,8 +74,8 @@ public class RankMatcherClient {
                     }
                 });
         try {
+            this.sender = new MessageSender(this);
             this.channel = bootstrap.connect(websocketURI.getHost(), websocketURI.getPort()).sync().channel();
-            this.sender = new MessageSender(this, channel);
             log.info("RankMatcher 连接成功");
         } catch (Exception e) {
             log.warn("RankMatcher 连接失败");
@@ -108,7 +99,11 @@ public class RankMatcherClient {
 
     public void addArena(String arenaName, int numPlayers) {
         Message msg = AddArenaMessage.of(arenaName, numPlayers);
-        sender.sendAsyncMessage(msg, f -> {});
+        sender.sendAsyncMessage(msg, f -> {
+            if (!f.isSuccess()) {
+                log.warn("添加竞技场失败: " + arenaName, f.cause());
+            }
+        });
     }
 
     public void removeArena(String arenaName) {
@@ -154,7 +149,7 @@ public class RankMatcherClient {
     }
 
     public interface MatchFailureHandler {
-        void onMatchFailure(String arenaName, String[] playerNames);
+        void onMatchFailure(String arenaName, List<Tuple<String, Integer>> playerNames);
     }
 
     public interface ConnectionStateHandler {

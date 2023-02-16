@@ -31,6 +31,7 @@ public class MessageHandler extends SimpleChannelInboundHandler<Message> {
 
         if (HANDSHAKE_COMPLETE.equals(evt)) {
             log.info("Rank Matcher TCP握手完成");
+            client.getSender().onHandshakeSuc(ctx.channel());
         }
     }
 

@@ -16,16 +16,16 @@ public interface Message {
     /**
      * 用于解码的消息类型（所以服务端不发的，可以不注册）
      */
-    Map<MessageType, Supplier<Message>> MESSAGE_SUPPLIERS = new HashMap<MessageType, Supplier<Message>>(){{
-        put(MessageType.ADD_ARENA, AddArenaMessage::new);
-        put(MessageType.REMOVE_ARENA, RemoveArenaMessage::new);
-        put(MessageType.ADD_PLAYER, AddPlayerMessage::new);
-        put(MessageType.REMOVE_PLAYER, RemovePlayerMessage::new);
-        put(MessageType.GET_OR_SUBSCRIBE_STATE, GetOrSubscribeStateMessage::new);
-        put(MessageType.CONNECTION_STATE, ConnectionStateMessage::new);
-        put(MessageType.MATCH_SUCCESS, MatchSuccessMessage::new);
-        put(MessageType.MATCH_FAILURE, MatchFailureMessage::new);
-        put(MessageType.FORMAT_ERROR, FormatErrorMessage::new);
+    Map<String, Supplier<Message>> MESSAGE_SUPPLIERS = new HashMap<String , Supplier<Message>>(){{
+        put(MessageType.ADD_ARENA.getTypeId(), AddArenaMessage::new);
+        put(MessageType.REMOVE_ARENA.getTypeId(), RemoveArenaMessage::new);
+        put(MessageType.ADD_PLAYER.getTypeId(), AddPlayerMessage::new);
+        put(MessageType.REMOVE_PLAYER.getTypeId(), RemovePlayerMessage::new);
+        put(MessageType.GET_OR_SUBSCRIBE_STATE.getTypeId(), GetOrSubscribeStateMessage::new);
+        put(MessageType.CONNECTION_STATE.getTypeId(), ConnectionStateMessage::new);
+        put(MessageType.MATCH_SUCCESS.getTypeId(), MatchSuccessMessage::new);
+        put(MessageType.MATCH_FAILURE.getTypeId(), MatchFailureMessage::new);
+        put(MessageType.FORMAT_ERROR.getTypeId(), FormatErrorMessage::new);
     }};
 
     MessageType getMessageType();

@@ -30,19 +30,19 @@ async fn handle_connection(
     raw_stream: TcpStream,
     addr: SocketAddr,
 ) {
-    println!("来自{addr}的新TCP连接已建立，正在尝试连接为WebSocket……");
+    println!("[客户端]({addr}) 的新TCP连接已建立，正在尝试连接为WebSocket……");
 
     let try_ws_stream = tokio_tungstenite::accept_async(raw_stream).await;
 
     let ws_stream = match try_ws_stream {
         Ok(ws_stream) => ws_stream,
         Err(e) => {
-            println!("连接WebSocket流时发生错误，连接即将终止！错误：{e}");
+            println!("[客户端]({addr}) 连接WebSocket流时发生错误，连接即将终止！错误：{e}");
             return;
         }
     };
 
-    println!("通向地址{addr}的WebSocket连接已建立。");
+    println!("[客户端]({addr}) 通向地址 {addr} 的WebSocket连接已建立。");
 
     // 把写部分存到客户端表里面
     let (tx, rx) = mpsc::unbounded();
@@ -61,19 +61,19 @@ async fn handle_connection(
         match packet {
             Ok(Packet::AddArena { arena, num_players }) => {
                 if num_players == 0 {
-                    println!("地址{addr}尝试注册匹配池{arena}，但匹配池的每局玩家数为0，创建失败！");
+                    println!("[匹配池]({addr}) 尝试注册匹配池 {arena}，但匹配池的每局玩家数为0，创建失败！");
                 } else {
                     let entry = arenas.entry(arena.clone());
                     entry.or_insert_with(|| (num_players, Arena::new()));
-                    println!("地址{addr}已注册匹配池{arena}，达到{num_players}位玩家时，此匹配池将返回匹配结果。");
+                    println!("[匹配池]({addr}) 已注册匹配池 {arena}，达到 {num_players} 位玩家时，此匹配池将返回匹配结果。");
                 }
             },
             Ok(Packet::RemoveArena(arena)) => {
                 let removed = arenas.remove(&arena);
                 if removed.is_some() {
-                    println!("地址{addr}已删除匹配池{arena}。");
+                    println!("[匹配池]({addr}) 已删除匹配池 {arena}。");
                 } else {
-                    println!("地址{addr}正在删除匹配池{arena}，此匹配池已不存在。")
+                    println!("[匹配池]({addr}) 正在删除匹配池 {arena}，此匹配池已不存在。")
                 }
             },
             Ok(Packet::AddPlayer { arena, player, rank, length }) => {
@@ -81,9 +81,9 @@ async fn handle_connection(
                 if let Some(arena_) = try_arena {
                     arena_.1.insert(player.clone(), rank as usize, length as usize);
                     senders.insert(player.clone(), addr);
-                    println!("地址{addr}成功向匹配池{arena}添加玩家{player}（分数为{rank}，数量为{length}）。");
+                    println!("[玩家匹配]({addr}) 成功向匹配池 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}）。");
                 } else {
-                    println!("地址{addr}正在向{arena}添加玩家{player}（分数为{rank}，数量为{length}），但此匹配池不存在。");
+                    println!("[玩家匹配]({addr}) 正在向 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}），但此匹配池不存在。");
                 }
             },
             Ok(Packet::RemovePlayer { arena, player }) => {
@@ -91,9 +91,9 @@ async fn handle_connection(
                 if let Some(arena_) = try_arena {
                     arena_.1.remove(&player);
                     senders.remove(&player);
-                    println!("地址{addr}成功从匹配池{arena}删除玩家{player}。");
+                    println!("[玩家匹配]({addr}) 成功从匹配池 {arena} 删除玩家 {player}。");
                 } else {
-                    println!("地址{addr}正在向{arena}删除玩家{player}，但此匹配池不存在。");
+                    println!("[玩家匹配]({addr}) 正在向 {arena} 删除玩家 {player}，但此匹配池不存在。");
                 }
             },
             Ok(Packet::GetOrSubscribeState { period }) => {
@@ -104,23 +104,23 @@ async fn handle_connection(
                 };
                 match dur_tx.try_send(period) {
                     Ok(_) => if let Some(duration) = period {
-                        println!("地址{addr}修改订阅周期为{}秒", duration.as_secs())
+                        println!("[订阅]({addr}) 修改订阅周期为 {} 秒", duration.as_secs())
                     } else {
-                        println!("地址{addr}已取消订阅")
+                        println!("[订阅]({addr}) 已取消订阅")
                     },
                     Err(e) => println!("内部错误：{e}"),
                 }
             },
             Err(e) => {
-                println!("地址{addr}发送的包发生了格式错误：{}", e.0);
+                println!("[错误]({addr}) 包格式错误：{}", e.0);
                 let packet = Packet::FormatError { error: e.0.to_string() };
                 let string = packet.to_string();
                 let try_send = tx.unbounded_send(Message::Text(string));
                 if let Err(e) = try_send {
-                    println!("内部错误：{e}");
+                    println!("[错误]({addr}) 内部错误：{e}");
                 }
             },
-            _ => println!("内部错误：客户端发送了非法包格式！"),
+            _ => println!("[错误]({addr}) 内部错误：客户端发送了非法包格式！"),
         }
 
         future::ok(())
@@ -132,7 +132,7 @@ async fn handle_connection(
     tokio::spawn(state_feedback);
     future::select(process_incoming, receive_from_others).await;
 
-    println!("地址{}已经断开WebSocket连接。", &addr);
+    println!("[客户端]({}) 已经断开WebSocket连接。", &addr);
 
     // 关闭排位反馈定时器
     dur_tx.close_channel();
@@ -151,10 +151,10 @@ async fn handle_connection(
         }
     }
     senders.retain(|_player, addr_for_this_player| &addr != addr_for_this_player);
-    println!("已移除从地址{}注册的玩家，列表是：{:?}。", addr, players);
+    println!("[客户端]({}) 已移除该客户端注册的玩家，列表是：{:?}。", addr, players);
 
     peer_map.remove(&addr);
-    println!("地址{}已经从排位匹配服务器解除注册，再见！", addr);
+    println!("[客户端]({}) 已经从排位匹配服务器解除注册，再见！", addr);
 }
 
 async fn state_feedback_timer(
@@ -205,7 +205,7 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
             if num_matched >= *num_players as usize {
                 // 匹配成功
                 println!(
-                    "匹配池{}成功匹配了{}位玩家：{:?}",
+                    "[匹配池] {} 成功匹配了 {} 位玩家：{:?}",
                     arena_ref.key(),
                     matched.len(),
                     matched
@@ -222,7 +222,7 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                 }
                 for item_collected in collected {
                     let (addr, players) = item_collected;
-                    println!("发送给地址{addr}的玩家列表：{:?}", players);
+                    println!("[匹配池] 发送给地址 {addr} 的玩家列表：{:?}", players);
                     let packet = Packet::MatchSuccess {
                         arena: arena_ref.key().clone(),
                         players,
@@ -232,7 +232,7 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                     if let Some(peer) = peers.get(&addr, &guard) {
                         let try_send = peer.unbounded_send(Message::Text(string));
                         if let Err(e) = try_send {
-                            println!("内部错误：{e}");
+                            println!("[匹配池] 内部错误：{e}");
                         }
                     }
                     drop(guard);
@@ -270,7 +270,7 @@ async fn main() {
             panic!("监听失败啦！错误信息：{}", e);
         }
     };
-    println!("正在监听的地址是{}。", addr);
+    println!("正在监听: {}", addr);
 
     tokio::spawn(rank_timer(
         Arc::clone(&peers),
