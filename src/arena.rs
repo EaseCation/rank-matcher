@@ -63,7 +63,7 @@ where
 
 impl<T> Arena<T>
 where
-    T: Hash + Eq + Clone,
+    T: Hash + Eq + Clone + core::fmt::Debug,
 {
     pub fn rank_match(&self) -> Vec<(T, usize)> {
         let mut max_rank = usize::min_value();
@@ -133,8 +133,13 @@ where
             player_idx_r[index_r].insert((player.key().clone(), length));
         }
 
+        for i in 1..cnt.len() {
+            cnt[i] += cnt[i - 1];
+        }
+
         let mut cur_players = HashSet::new();
         for (idx, &cnt_i) in cnt.iter().enumerate() {
+            // println!("idx = {idx}, cnt_i = {cnt_i}, players = {:?}", cur_players);
             cur_players.extend(player_idx_l[idx].iter());
             for player in cur_players.iter() {
                 ans.entry(player.0.clone())
