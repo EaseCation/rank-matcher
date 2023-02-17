@@ -205,7 +205,7 @@ async fn state_feedback_timer(
     println!("地址{addr}的排位状态反馈服务停止工作！");
 }
 
-async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
+async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client: reqwest::Client) {
     let mut interval = time::interval(time::Duration::from_secs(1));
     println!("排位定时器开始工作！");
     loop {
@@ -231,23 +231,12 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
                             .or_insert_with(|| vec![(player.clone(), length as u64)]);
                     }
                 }
-                for item_collected in collected {
-                    let (addr, players) = item_collected;
-                    println!("[匹配池] 发送给地址 {addr} 的玩家列表：{:?}", players);
-                    let packet = Packet::MatchSuccess {
-                        arena: arena_ref.key().clone(),
-                        players,
-                    };
-                    let string = packet.to_string();
-                    let guard = lockfree_cuckoohash::pin();
-                    if let Some(peer) = peers.get(&addr, &guard) {
-                        let try_send = peer.unbounded_send(Message::Text(string));
-                        if let Err(e) = try_send {
-                            println!("[匹配池] 内部错误：{e}");
-                        }
-                    }
-                    drop(guard);
-                }
+                tokio::spawn(request_http_and_send_id(
+                    Arc::clone(&peers),
+                    arena_ref.key().clone(),
+                    collected,
+                    http_client.clone(),
+                ));
                 let guard = lockfree_cuckoohash::pin();
                 for (player, _length) in &matched {
                     arena.remove(player);
@@ -260,6 +249,59 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders) {
             arena.rank_update();
         }
         interval.tick().await;
+    }
+}
+
+#[derive(serde::Serialize)]
+struct CreateStageRequest {
+    game: String,
+    matching: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CreateStageResponse {
+    request_id: u64,
+    // error_id: u64
+}
+
+async fn request_http_and_send_id(
+    peers: Peers,
+    arena: String,
+    collected: DashMap<SocketAddr, Vec<(String, u64)>>,
+    http_client: reqwest::Client,
+) {
+    let response = http_client
+        .post("http://example.com")
+        .json(&CreateStageRequest {
+            game: arena.clone(),
+            matching: format!("Rank#{}", rand::random::<u32>()),
+        })
+        .send()
+        .await;
+    let stage_request_id = match response {
+        Ok(a) => match a.json::<CreateStageResponse>().await {
+            Ok(resp) => resp.request_id, // 还应该处理error_id
+            Err(e) => todo!("返回的不是json格式！错误：{e}"),
+        },
+        Err(e) => todo!("无法创建房间！错误：{e}"),
+    };
+    for item_collected in collected {
+        let (addr, players) = item_collected;
+        println!("[匹配池] 发送给地址 {addr} 的玩家列表：{:?}", players);
+        let packet = Packet::MatchSuccess {
+            arena: arena.clone(),
+            stage_request_id,
+            players,
+        };
+        let string = packet.to_string();
+        let guard = lockfree_cuckoohash::pin();
+        if let Some(peer) = peers.get(&addr, &guard) {
+            let try_send = peer.unbounded_send(Message::Text(string));
+            if let Err(e) = try_send {
+                println!("[匹配池] 内部错误：{e}");
+            }
+        }
+        drop(guard);
     }
 }
 
@@ -283,10 +325,16 @@ async fn main() {
     };
     println!("正在监听: {}", addr);
 
+    let http_client = match reqwest::Client::builder().build() {
+        Ok(ans) => ans,
+        Err(e) => panic!("无法创建http客户端！错误：{e}"),
+    };
+
     tokio::spawn(rank_timer(
         Arc::clone(&peers),
         Arc::clone(&arenas),
         Arc::clone(&senders),
+        http_client.clone(),
     ));
 
     println!("开始接受排位客户端（大厅服务器）连接！");

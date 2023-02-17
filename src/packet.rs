@@ -31,7 +31,7 @@ pub enum Packet {
     },
     MatchSuccess {
         arena: String,
-        // stage_request_id: u64,  // 请求创建房间的requestId，然后交给各个nk去轮询检查房间是否创建成功
+        stage_request_id: u64, // 请求创建房间的requestId，然后交给各个nk去轮询检查房间是否创建成功
         // String是玩家的名称，u64是队伍内玩家的个数。u64通常是1
         // 若不为1表示String为队长的名字
         players: Vec<(String, u64)>,
@@ -127,10 +127,15 @@ impl CharWriter {
                     self.write_number(*num_matched);
                 }
             }
-            Packet::MatchSuccess { arena, players } => {
+            Packet::MatchSuccess {
+                arena,
+                stage_request_id,
+                players,
+            } => {
                 self.inner.push_back(',');
                 self.inner.push_back('7');
                 self.write_string(&arena);
+                self.write_number(*stage_request_id);
                 self.write_number(players.len() as u64);
                 for (player, length) in players {
                     self.write_string(&player);
@@ -279,6 +284,7 @@ impl CharReader {
     #[inline]
     fn read_v1_match_success(&mut self) -> Result<Packet, PacketFormat> {
         let arena = self.read_string();
+        let stage_request_id = self.read_number();
         let number = self.read_number();
         let mut players = Vec::with_capacity(number as usize);
         for _ in 0..number {
@@ -286,7 +292,11 @@ impl CharReader {
             let length = self.read_number();
             players.push((player, length));
         }
-        Ok(Packet::MatchSuccess { arena, players })
+        Ok(Packet::MatchSuccess {
+            arena,
+            stage_request_id,
+            players,
+        })
     }
     #[inline]
     fn read_v1_match_failure(&mut self) -> Result<Packet, PacketFormat> {
