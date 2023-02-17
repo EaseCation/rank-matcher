@@ -5,12 +5,13 @@ import net.easecation.eccommons.adt.Tuple;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageType;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Data
 public class ConnectionStateMessage implements Message {
 
-    private Map<String, Tuple<String, Integer>> playerInfo;
+    private Map<String, Tuple<String, Integer>> playerInfo = new LinkedHashMap<>();
 
     @Override
     public MessageType getMessageType() {

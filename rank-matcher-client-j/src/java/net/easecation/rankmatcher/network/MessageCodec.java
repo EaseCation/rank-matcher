@@ -13,6 +13,9 @@ public class MessageCodec extends MessageToMessageCodec<TextWebSocketFrame, Mess
     @Override
     protected void decode(ChannelHandlerContext channelHandlerContext, TextWebSocketFrame frame, List<Object> list) {
         String[] split = frame.text().split(",");
+        if (split.length < 2) {
+            throw new IllegalArgumentException("Invalid message: " + frame.text());
+        }
         Supplier<Message> messageSupplier = Message.MESSAGE_SUPPLIERS.get(split[1]);
         if (messageSupplier != null) {
             Message message = messageSupplier.get();
