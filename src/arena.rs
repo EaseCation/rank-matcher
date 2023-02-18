@@ -23,8 +23,14 @@ impl<T> Arena<T>
 where
     T: Hash + Eq,
 {
-    pub fn insert(&self, id: T, rank: usize, length: usize) -> Option<(usize, usize, usize)> {
-        self.players.insert(id, (rank, rank, length))
+    pub fn insert(
+        &self,
+        id: T,
+        length: usize,
+        rank_min: usize,
+        rank_max: usize,
+    ) -> Option<(usize, usize, usize)> {
+        self.players.insert(id, (rank_min, rank_max, length))
     }
 
     pub fn remove<Q>(&self, id: &Q) -> Option<(usize, usize, usize)>

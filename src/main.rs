@@ -76,14 +76,16 @@ async fn handle_connection(
                     println!("[匹配池]({addr}) 正在删除匹配池 {arena}，此匹配池已不存在。")
                 }
             },
-            Ok(Packet::AddPlayer { arena, player, rank, length }) => {
+            Ok(Packet::AddPlayer { arena, player, rank, length, init_rank_diff }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    arena_.1.insert(player.clone(), rank as usize, length as usize);
+                    let rank_min = rank - init_rank_diff;
+                    let rank_max = rank + init_rank_diff;
+                    arena_.1.insert(player.clone(), length as usize, rank_min as usize, rank_max as usize);
                     senders.insert(player.clone(), addr);
-                    println!("[玩家匹配]({addr}) 成功向匹配池 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}）。");
+                    println!("[玩家匹配]({addr}) 成功向匹配池 {arena} 添加玩家 {player}（分数为 {rank}，初始区间为 {rank_min}至{rank_max}，数量为 {length}）。");
                 } else {
-                    println!("[玩家匹配]({addr}) 正在向 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}），但此匹配池不存在。");
+                    println!("[玩家匹配]({addr}) 正在向 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}，区间差值为{init_rank_diff}），但此匹配池不存在。");
                 }
             },
             Ok(Packet::RemovePlayer { arena, player }) => {
