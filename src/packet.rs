@@ -38,6 +38,8 @@ pub enum Packet {
     },
     MatchFailure {
         arena: String,
+        error_id: u64,
+        error_msg: String,
         players: Vec<(String, u64)>,
     },
     FormatError {
@@ -142,10 +144,17 @@ impl CharWriter {
                     self.write_number(*length)
                 }
             }
-            Packet::MatchFailure { arena, players } => {
+            Packet::MatchFailure {
+                arena,
+                error_id,
+                error_msg,
+                players,
+            } => {
                 self.inner.push_back(',');
                 self.inner.push_back('8');
                 self.write_string(&arena);
+                self.write_number(*error_id);
+                self.write_string(&error_msg);
                 self.write_number(players.len() as u64);
                 for (player, length) in players {
                     self.write_string(&player);
@@ -301,6 +310,8 @@ impl CharReader {
     #[inline]
     fn read_v1_match_failure(&mut self) -> Result<Packet, PacketFormat> {
         let arena = self.read_string();
+        let error_id = self.read_number();
+        let error_msg = self.read_string();
         let number = self.read_number();
         let mut players = Vec::with_capacity(number as usize);
         for _ in 0..number {
@@ -308,7 +319,12 @@ impl CharReader {
             let length = self.read_number();
             players.push((player, length));
         }
-        Ok(Packet::MatchFailure { arena, players })
+        Ok(Packet::MatchFailure {
+            arena,
+            error_id,
+            error_msg,
+            players,
+        })
     }
     #[inline]
     fn read_v1_format_error(&mut self) -> Result<Packet, PacketFormat> {

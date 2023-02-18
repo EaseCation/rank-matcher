@@ -259,9 +259,10 @@ struct CreateStageRequest {
 }
 
 #[derive(serde::Deserialize)]
-struct CreateStageResponse {
-    request_id: u64,
-    // error_id: u64
+#[serde(untagged)]
+enum CreateStageResponse {
+    Success { request_id: u64 },
+    Error { error_id: u64, error_msg: String },
 }
 
 async fn request_http_and_send_id(
@@ -280,10 +281,78 @@ async fn request_http_and_send_id(
         .await;
     let stage_request_id = match response {
         Ok(a) => match a.json::<CreateStageResponse>().await {
-            Ok(resp) => resp.request_id, // 还应该处理error_id
-            Err(e) => todo!("返回的不是json格式！错误：{e}"),
+            Ok(CreateStageResponse::Success { request_id }) => request_id,
+            Ok(CreateStageResponse::Error {
+                error_id,
+                error_msg,
+            }) => {
+                // FIXME: 这里的代码还能写得更简单
+                println!("[匹配池] 中心服务器返回了错误！错误代码{error_id}，错误信息{error_msg}");
+                for item_collected in collected {
+                    let (addr, players) = item_collected;
+                    let packet = Packet::MatchFailure {
+                        arena: arena.clone(),
+                        error_id,
+                        error_msg: error_msg.clone(),
+                        players,
+                    };
+                    let string = packet.to_string();
+                    let guard = lockfree_cuckoohash::pin();
+                    if let Some(peer) = peers.get(&addr, &guard) {
+                        let try_send = peer.unbounded_send(Message::Text(string));
+                        if let Err(e) = try_send {
+                            println!("[匹配池] 内部错误：{e}");
+                        }
+                    }
+                    drop(guard);
+                }
+                return;
+            }
+            Err(e) => {
+                println!("[匹配池] 中心服务器返回的新增房间回复不是json格式！{e}");
+                for item_collected in collected {
+                    let (addr, players) = item_collected;
+                    let packet = Packet::MatchFailure {
+                        arena: arena.clone(),
+                        error_id: 9000,
+                        error_msg: format!("中心服务器返回的新增房间回复不是json格式：{e}"),
+                        players,
+                    };
+                    let string = packet.to_string();
+                    let guard = lockfree_cuckoohash::pin();
+                    if let Some(peer) = peers.get(&addr, &guard) {
+                        let try_send = peer.unbounded_send(Message::Text(string));
+                        if let Err(e) = try_send {
+                            println!("[匹配池] 内部错误：{e}");
+                        }
+                    }
+                    drop(guard);
+                }
+                return;
+            }
         },
-        Err(e) => todo!("无法创建房间！错误：{e}"),
+        Err(e) => {
+            println!("[匹配池] 内部错误，无法连接到中心服务器！{e}");
+            for item_collected in collected {
+                let (addr, players) = item_collected;
+                let packet = Packet::MatchFailure {
+                    arena: arena.clone(),
+                    error_id: 9001,
+                    error_msg: format!("无法连接到中心服务器：{e}"),
+                    players,
+                };
+                let string = packet.to_string();
+                let guard = lockfree_cuckoohash::pin();
+                if let Some(peer) = peers.get(&addr, &guard) {
+                    let try_send = peer.unbounded_send(Message::Text(string));
+                    if let Err(e) = try_send {
+                        println!("[匹配池] 内部错误：{e}");
+                    }
+                }
+                drop(guard);
+            }
+            return;
+        }
     };
     for item_collected in collected {
         let (addr, players) = item_collected;
