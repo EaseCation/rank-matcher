@@ -2,6 +2,7 @@ package net.easecation.rankmatcher.api.message;
 
 import lombok.Data;
 import net.easecation.eccommons.adt.Tuple;
+import net.easecation.rankmatcher.api.CharReader;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageType;
 
@@ -25,26 +26,26 @@ public class ConnectionStateMessage implements Message {
     }
 
     @Override
-    public void decode(String[] data) {
+    public void decode(CharReader reader) {
         /*
-        self.inner.push_back(',');
-        self.inner.push_back('6');
-        self.write_number(player_info.len() as u64);
-        for info in player_info {
-            let player = info.key();
-            let (arena, num_matched) = info.value();
-            self.write_string(player);
-            self.write_string(arena);
-            self.write_number(*num_matched);
+        fn read_v1_connection_state(&mut self) -> Result<Packet, PacketFormat> {
+            let number = self.read_number();
+            let player_info = DashMap::with_capacity(number as usize);
+            for _ in 0..number {
+                let player = self.read_string();
+                let arena = self.read_string();
+                let num_matched = self.read_number();
+                player_info.insert(player, (arena, num_matched));
+            }
+            Ok(Packet::ConnectionState { player_info })
         }
         */
-        // protocol(0), type(1), len(2), player_len(3), player(4), arena_len(5), arena(6), num_matched(7), ...
-        int len = Integer.parseInt(data[2]);
-        for (int i = 0; i < len; i++) {
-            String player = data[4 + i * 5];
-            String arena = data[4 + 2 + i * 5];
-            int num_matched = Integer.parseInt(data[4 + 3 + i * 5]);
-            playerInfo.put(player, Tuple.of(arena, num_matched));
+        int number = reader.readNumber();
+        for (int i = 0; i < number; i++) {
+            String player = reader.readString();
+            String arena = reader.readString();
+            int numMatched = reader.readNumber();
+            playerInfo.put(player, Tuple.of(arena, numMatched));
         }
     }
 

@@ -1,5 +1,6 @@
 package net.easecation.rankmatcher.api.message;
 
+import net.easecation.rankmatcher.api.CharReader;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageType;
 
@@ -11,6 +12,15 @@ public class FormatErrorMessage implements Message {
         FormatErrorMessage formatErrorMessage = new FormatErrorMessage();
         formatErrorMessage.message = message;
         return formatErrorMessage;
+    }
+
+    @Override
+    public void decode(CharReader reader) {
+        /*
+        let error = self.read_string();
+        Ok(Packet::FormatError { error })
+         */
+        message = reader.readString();
     }
 
     @Override

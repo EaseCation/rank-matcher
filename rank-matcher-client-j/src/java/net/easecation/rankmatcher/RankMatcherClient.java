@@ -111,8 +111,8 @@ public class RankMatcherClient {
         sender.sendAsyncMessage(msg, f -> {});
     }
 
-    public void addPlayer(String arenaName, String playerName, int score, int length) {
-        Message msg = AddPlayerMessage.of(arenaName, playerName, score, length);
+    public void addPlayer(String arenaName, String playerName, int score, int length, int initRankDiff) {
+        Message msg = AddPlayerMessage.of(arenaName, playerName, score, length, initRankDiff);
         sender.sendAsyncMessage(msg, f -> {});
     }
 
@@ -128,13 +128,13 @@ public class RankMatcherClient {
 
     public void registerMatchSuccessHandler(MatchSuccessHandler handler) {
         this.receiver.addHandler(MessageType.MATCH_SUCCESS, MatchSuccessMessage.class, msg -> {
-            handler.onMatchSuccess(msg.getArena(), msg.getPlayers());
+            handler.onMatchSuccess(msg.getArena(), msg.getStageRequestId(), msg.getPlayers());
         });
     }
 
     public void registerMatchFailureHandler(MatchFailureHandler handler) {
         this.receiver.addHandler(MessageType.MATCH_FAILURE, MatchFailureMessage.class, msg -> {
-            handler.onMatchFailure(msg.getArena(), msg.getPlayers());
+            handler.onMatchFailure(msg.getArena(), msg.getErrorId(), msg.getErrorMessage(), msg.getPlayers());
         });
     }
 
@@ -145,11 +145,11 @@ public class RankMatcherClient {
     }
 
     public interface MatchSuccessHandler {
-        void onMatchSuccess(String arenaName, List<Tuple<String, Integer>> playerNames);
+        void onMatchSuccess(String arenaName, int stageRequestId, List<Tuple<String, Integer>> playerNames);
     }
 
     public interface MatchFailureHandler {
-        void onMatchFailure(String arenaName, List<Tuple<String, Integer>> playerNames);
+        void onMatchFailure(String arenaName, int errorId, String errorMessage, List<Tuple<String, Integer>> playerNames);
     }
 
     public interface ConnectionStateHandler {

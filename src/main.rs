@@ -168,7 +168,7 @@ async fn state_feedback_timer(
     addr: SocketAddr,
     mut period: mpsc::Receiver<Option<time::Duration>>,
 ) {
-    println!("地址{addr}的排位状态反馈服务开始工作！");
+    println!("地址 {addr} 的排位状态反馈服务开始工作！");
     let mut last_duration = None;
     loop {
         match period.try_next() {
@@ -191,7 +191,7 @@ async fn state_feedback_timer(
                     );
                 }
             }
-            println!("向{}发送排位反馈状态:{:?}", addr, player_info);
+            println!("[状态反馈]({}) {:?}", addr, player_info);
             let packet = Packet::ConnectionState { player_info };
             let string = packet.to_string();
             let try_send = peer.unbounded_send(Message::Text(string));
@@ -204,7 +204,7 @@ async fn state_feedback_timer(
             tokio::task::yield_now().await;
         }
     }
-    println!("地址{addr}的排位状态反馈服务停止工作！");
+    println!("地址 {addr} 的排位状态反馈服务停止工作！");
 }
 
 async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client: reqwest::Client) {
@@ -274,7 +274,7 @@ async fn request_http_and_send_id(
     http_client: reqwest::Client,
 ) {
     let response = http_client
-        .post("http://example.com")
+        .post("http://localhost:8081/customAddStage")
         .json(&CreateStageRequest {
             game: arena.clone(),
             matching: format!("Rank#{}", rand::random::<u32>()),

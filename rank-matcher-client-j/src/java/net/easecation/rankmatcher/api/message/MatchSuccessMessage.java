@@ -2,6 +2,7 @@ package net.easecation.rankmatcher.api.message;
 
 import lombok.Data;
 import net.easecation.eccommons.adt.Tuple;
+import net.easecation.rankmatcher.api.CharReader;
 import net.easecation.rankmatcher.api.Message;
 import net.easecation.rankmatcher.api.MessageType;
 
@@ -12,26 +13,34 @@ import java.util.List;
 public class MatchSuccessMessage implements Message {
 
     private String arena;
-    private List<Tuple<String, Integer>> players;
-
-    public static MatchSuccessMessage of(String arena, List<Tuple<String, Integer>> players) {
-        MatchSuccessMessage message = new MatchSuccessMessage();
-        message.arena = arena;
-        message.players = players;
-        return message;
-    }
+    private int stageRequestId;
+    private List<Tuple<String, Integer>> players = new ArrayList<>();
 
     @Override
-    public void decode(String[] data) {
-        // protocol 0, type 1, len_arena 2, str_arena 3, num_players 4, len_player1 5, str_player1 6, rank_player1 7, len_player2 8, str_player2 9, rank_player2, ...
-        arena = data[3];  // 2 3
-        int numPlayers = Integer.parseInt(data[4]);
-        players = new ArrayList<>();
-        for (int i = 0; i < numPlayers; i++) {
-            players.add(Tuple.of(
-                    data[5 + 1 + i * 3],
-                    Integer.parseInt(data[5 + 2 + i * 3])
-            ));
+    public void decode(CharReader reader) {
+        /*
+        let arena = self.read_string();
+        let stage_request_id = self.read_number();
+        let number = self.read_number();
+        let mut players = Vec::with_capacity(number as usize);
+        for _ in 0..number {
+            let player = self.read_string();
+            let length = self.read_number();
+            players.push((player, length));
+        }
+        Ok(Packet::MatchSuccess {
+            arena,
+            stage_request_id,
+            players,
+        })
+         */
+        arena = reader.readString();
+        stageRequestId = reader.readNumber();
+        int number = reader.readNumber();
+        for (int i = 0; i < number; i++) {
+            String player = reader.readString();
+            int length = reader.readNumber();
+            players.add(Tuple.of(player, length));
         }
     }
 
@@ -39,6 +48,7 @@ public class MatchSuccessMessage implements Message {
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append(PROTOCOL_VERSION).append(",").append(getMessageType().getTypeId()).append(",").append(Message.writeString(arena));
+        sb.append(",").append(stageRequestId);
         sb.append(",").append(players.size());
         for (Tuple<String, Integer> player : players) {
             sb.append(",").append(Message.writeString(player.getFirst()));
