@@ -4,10 +4,14 @@ import java.util.function.Supplier;
 
 public class CharReader {
 
-    private final String message;
+    private final byte[] message;
     private int currentPosition;
 
     public CharReader(String message) {
+        this(message.getBytes());
+    }
+
+    public CharReader(byte[] message) {
         this.message = message;
         this.currentPosition = 0;
     }
@@ -33,11 +37,11 @@ public class CharReader {
 
     public int readNumber() {
         int start = this.currentPosition;
-        while (this.currentPosition < this.message.length() && Character.isDigit(this.message.charAt(this.currentPosition))) {
+        while (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) >= '0' && (byte)(this.message[this.currentPosition]) <= '9') {
             this.currentPosition++;
         }
-        int result = Integer.parseInt(this.message.substring(start, this.currentPosition));
-        if (this.currentPosition < this.message.length() && this.message.charAt(this.currentPosition) == ',') {
+        int result = Integer.parseInt(new String(this.message, start, this.currentPosition - start));
+        if (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) == ',') {
             this.currentPosition++;
         }
         return result;
@@ -45,12 +49,9 @@ public class CharReader {
 
     public String readString() {
         int length = readNumber();
-        if (this.currentPosition + length > this.message.length()) {
-            throw new RuntimeException("String length is out of range.");
-        }
-        String result = this.message.substring(this.currentPosition, this.currentPosition + length);
+        String result = new String(this.message, currentPosition, length);
         this.currentPosition += length;
-        if (this.currentPosition < this.message.length() && this.message.charAt(this.currentPosition) == ',') {
+        if (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) == ',') {
             this.currentPosition++;
         }
         return result;

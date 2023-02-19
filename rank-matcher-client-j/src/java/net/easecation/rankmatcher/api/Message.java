@@ -2,6 +2,7 @@ package net.easecation.rankmatcher.api;
 
 import net.easecation.rankmatcher.api.message.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -35,8 +36,7 @@ public interface Message {
     String toString();
 
     static String writeString(String string) {
-        string = string.replace(",", "\\_");
-        return string.length() + "," + string;
+        return string.getBytes(StandardCharsets.UTF_8).length + "," + string;
     }
 
 }
