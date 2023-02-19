@@ -19,6 +19,7 @@ pub enum Packet {
         // 初始区间配置，用于加快匹配速度，初始区间为[rank - diff, rank + diff]。
         // 通常diff为0
         init_rank_diff: u64,
+        speed: u64
     },
     RemovePlayer {
         arena: String,
@@ -102,6 +103,7 @@ impl CharWriter {
                 rank,
                 length,
                 init_rank_diff,
+                speed
             } => {
                 self.inner.push_back(',');
                 self.inner.push_back('3');
@@ -110,6 +112,7 @@ impl CharWriter {
                 self.write_number(*rank);
                 self.write_number(*length);
                 self.write_number(*init_rank_diff);
+                self.write_number(*speed);
             }
             Packet::RemovePlayer { arena, player } => {
                 self.inner.push_back(',');
@@ -266,12 +269,14 @@ impl CharReader {
         let rank = self.read_number();
         let length = self.read_number();
         let init_rank_diff = self.read_number();
+        let speed = self.read_number();
         Ok(Packet::AddPlayer {
             arena,
             player,
             rank,
             length,
             init_rank_diff,
+            speed
         })
     }
     #[inline]
