@@ -1,7 +1,7 @@
 // Rank matching algorithm
 use dashmap::DashMap;
-use std::{borrow::Borrow, collections::HashSet, hash::Hash, sync::Arc};
 use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashSet, hash::Hash, sync::Arc};
 
 // 一个匹配池
 #[derive(Clone)]
@@ -36,9 +36,9 @@ where
     }
 
     pub fn remove<Q>(&self, id: &Q) -> Option<(usize, usize, usize, usize)>
-        where
-            T: Borrow<Q>,
-            Q: Hash + Eq,
+    where
+        T: Borrow<Q>,
+        Q: Hash + Eq,
     {
         self.players.remove(id).map(|(_k, v)| v)
     }
@@ -145,8 +145,8 @@ where
             assert!(max_rank_i >= min_rank && max_rank_i <= max_rank);
             let index_l = min_rank_i - min_rank;
             let index_r = max_rank_i - min_rank + 1;
-            assert!(/*index_l >= 0 && */index_l < max_rank - min_rank + 2);
-            assert!(/*index_r >= 0 && */index_r < max_rank - min_rank + 2);
+            assert!(/*index_l >= 0 && */ index_l < max_rank - min_rank + 2);
+            assert!(/*index_r >= 0 && */ index_r < max_rank - min_rank + 2);
             assert!(cnt[index_r] >= length as isize);
             cnt[index_l] += length as isize;
             cnt[index_r] -= length as isize;
