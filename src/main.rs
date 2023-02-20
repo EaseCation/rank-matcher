@@ -59,7 +59,7 @@ async fn handle_connection(
         let text = msg.to_text().unwrap();
         let packet = Packet::from_str(text);
         match packet {
-            Ok(Packet::AddArena { arena, num_players }) => {
+            Ok(Packet::AddArena { arena , num_players }) => {
                 if num_players == 0 {
                     println!("[匹配池]({addr}) 尝试注册匹配池 {arena}，但匹配池的每局玩家数为0，创建失败！");
                 } else {

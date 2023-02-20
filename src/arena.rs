@@ -59,10 +59,10 @@ where
         for mut player in self.players.iter_mut() {
             let (min_rank_i, max_rank_i, _length, speed) = player.value_mut();
             if *min_rank_i > usize::min_value() {
-                *min_rank_i -= speed as usize;
+                *min_rank_i -= *speed;
             }
             if *max_rank_i < usize::max_value() {
-                *max_rank_i += speed as usize;
+                *max_rank_i += *speed;
             }
         }
     }
