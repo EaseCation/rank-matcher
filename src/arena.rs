@@ -58,12 +58,8 @@ where
     pub fn rank_update(&self) {
         for mut player in self.players.iter_mut() {
             let (min_rank_i, max_rank_i, _length, speed) = player.value_mut();
-            if *min_rank_i > usize::min_value() {
-                *min_rank_i -= *speed;
-            }
-            if *max_rank_i < usize::max_value() {
-                *max_rank_i += *speed;
-            }
+            *min_rank_i = min_rank_i.saturating_sub(*speed);
+            *max_rank_i = max_rank_i.saturating_add(*speed);
         }
     }
 }
@@ -86,8 +82,8 @@ where
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
         for player in self.players.iter() {
             let (min_rank_i, max_rank_i, length, _speed) = player.value();
-            let index_l = min_rank_i - min_rank;
-            let index_r = max_rank_i - min_rank + 1;
+            let index_l = min_rank_i.saturating_sub(min_rank);
+            let index_r = max_rank_i.saturating_sub(min_rank).saturating_add(1);
             cnt[index_l] += *length as isize;
             cnt[index_r] -= *length as isize;
         }
@@ -132,10 +128,21 @@ where
         let mut player_idx_r = vec![HashSet::new(); max_rank - min_rank + 2];
         for player in self.players.iter() {
             let (min_rank_i, max_rank_i, length, _speed) = *player.value();
-            let index_l = min_rank_i - min_rank;
-            let index_r = max_rank_i - min_rank + 1;
-            cnt[index_l] += length as isize;
-            cnt[index_r] -= length as isize;
+            let index_l = min_rank_i.saturating_sub(min_rank);
+            let index_r = max_rank_i.saturating_sub(min_rank).saturating_add(1);
+            cnt[index_l] = cnt[index_l].saturating_sub(length as isize);
+            cnt[index_r] = cnt[index_r].saturating_add(length as isize);
+            /*if let Some(cnt_l) = cnt.get_mut(index_l) {
+                *cnt_l = cnt_l.saturating_sub(length as isize);
+            } else {
+                eprintln!("index_l: {}, min_rank: {}, max_rank: {}", index_l, min_rank, max_rank);
+            }
+
+            if let Some(cnt_r) = cnt.get_mut(index_r) {
+                *cnt_r = cnt_r.saturating_add(length as isize);
+            } else {
+                eprintln!("index_r: {}, min_rank: {}, max_rank: {}", index_r, min_rank, max_rank);
+            }*/
             player_idx_l[index_l].insert((player.key().clone(), length));
             player_idx_r[index_r].insert((player.key().clone(), length));
         }

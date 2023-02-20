@@ -79,11 +79,11 @@ async fn handle_connection(
             Ok(Packet::AddPlayer { arena, player, rank, length, init_rank_diff, speed }) => {
                 let try_arena = arenas.get(&arena);
                 if let Some(arena_) = try_arena {
-                    let rank_min = rank - init_rank_diff;
-                    let rank_max = rank + init_rank_diff;
+                    let rank_min = rank.saturating_sub(init_rank_diff);
+                    let rank_max = rank.saturating_add(init_rank_diff);
                     arena_.1.insert(player.clone(), length as usize, rank_min as usize, rank_max as usize, speed as usize);
                     senders.insert(player.clone(), addr);
-                    println!("[玩家匹配]({addr}) 成功向匹配池 {arena} 添加玩家 {player}（分数为 {rank}，初始区间为 {rank_min}至{rank_max}，数量为 {length}）。");
+                    println!("[玩家匹配]({addr}) 成功向匹配池 {arena} 添加玩家 {player}（分数为 {rank}，初始区间为 {rank_min}至{rank_max}，数量为 {length}，扩散速度为 {speed}）");
                 } else {
                     println!("[玩家匹配]({addr}) 正在向 {arena} 添加玩家 {player}（分数为 {rank}，数量为 {length}，区间差值为{init_rank_diff}），但此匹配池不存在。");
                 }
