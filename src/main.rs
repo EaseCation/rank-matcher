@@ -182,12 +182,12 @@ async fn state_feedback_timer(
             let player_info = DashMap::new();
             for arena_ref in arenas.iter() {
                 let (_num_players, arena) = arena_ref.value();
-                for state in arena.get_player_states().iter() {
-                    let player = state.key();
-                    let current_count = state.value();
+                let mut player_states = std::collections::HashMap::new();
+                arena.get_player_states(&mut player_states);
+                for (player, current_count) in player_states {
                     player_info.insert(
                         player.to_string(),
-                        (arena_ref.key().to_string(), *current_count),
+                        (arena_ref.key().to_string(), current_count),
                     );
                 }
             }
@@ -213,7 +213,8 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
     loop {
         for arena_ref in arenas.iter() {
             let (num_players, arena) = arena_ref.value();
-            let matched = arena.rank_match();
+            let mut matched = Vec::new();
+            arena.rank_match(&mut matched);
             let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
             if num_matched >= *num_players as usize {
                 // 匹配成功

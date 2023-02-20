@@ -69,7 +69,7 @@ impl<T> Arena<T>
 where
     T: Hash + Eq + Clone + core::fmt::Debug,
 {
-    pub fn rank_match(&self) -> Vec<(T, usize)> {
+    pub fn rank_match<E: Extend<(T, usize)>>(&self, ans: &mut E) {
         let players = {
             let mut players = HashMap::new();
             // FIXME: 有没有更简单的方法？
@@ -85,7 +85,7 @@ where
             min_rank = usize::min(min_rank, min_rank_i);
         }
         if max_rank < min_rank {
-            return Vec::new();
+            return; // extend nothing
         }
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
         for &(min_rank_i, max_rank_i, length, _speed) in players.values() {
@@ -106,17 +106,16 @@ where
             }
         }
         let target_rank = max_cnt_i + min_rank;
-        let mut ans = Vec::new();
-        for (id, (min_rank_i, max_rank_i, length, _speed)) in players {
-            if min_rank_i <= target_rank && target_rank <= max_rank_i {
-                ans.push((id, length))
-            }
-        }
-        ans
+        let iter = players
+            .iter()
+            .filter(|(_, &(min_rank_i, max_rank_i, _, _))| {
+                min_rank_i <= target_rank && target_rank <= max_rank_i
+            })
+            .map(|(id, &(_, _, length, _speed))| (id.clone(), length));
+        ans.extend(iter);
     }
 
-    pub fn get_player_states(&self) -> DashMap<T, u64> {
-        let ans = DashMap::new();
+    pub fn get_player_states<E: Extend<(T, u64)>>(&self, ans: &mut E) {
         let players = {
             let mut players = HashMap::new();
             // FIXME: 有没有更简单的方法？
@@ -134,7 +133,7 @@ where
         }
 
         if max_rank < min_rank {
-            return ans;
+            return; // extend nothing and return
         }
 
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
@@ -158,17 +157,18 @@ where
         }
 
         let mut cur_players = HashSet::new();
+        let mut res = HashMap::new();
         for (idx, &cnt_i) in cnt.iter().enumerate() {
             // println!("idx = {idx}, cnt_i = {cnt_i}, players = {:?}", cur_players);
             cur_players.extend(player_idx_l[idx].iter());
             for &(id, _length) in cur_players.iter() {
-                ans.entry(id.clone())
+                res.entry(id.clone())
                     .and_modify(|e| *e = u64::max(*e, cnt_i as u64))
                     .or_insert(0);
             }
             cur_players.retain(|e| player_idx_r[idx].get(e).is_none());
         }
 
-        ans
+        ans.extend(res)
     }
 }
