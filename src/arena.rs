@@ -147,7 +147,6 @@ where
             let index_r = max_rank_i - min_rank + 1;
             assert!(/*index_l >= 0 && */ index_l < max_rank - min_rank + 2);
             assert!(/*index_r >= 0 && */ index_r < max_rank - min_rank + 2);
-            assert!(cnt[index_r] >= length as isize);
             cnt[index_l] += length as isize;
             cnt[index_r] -= length as isize;
             player_idx_l[index_l].insert((id.clone(), length));
