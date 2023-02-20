@@ -1,6 +1,7 @@
 // Rank matching algorithm
 use dashmap::DashMap;
 use std::{borrow::Borrow, collections::HashSet, hash::Hash, sync::Arc};
+use std::collections::HashMap;
 
 // 一个匹配池
 #[derive(Clone)]
@@ -70,14 +71,16 @@ where
 {
     pub fn rank_match(&self) -> Vec<(T, usize)> {
         let players = {
-            let mut players = DashMap::new();
-            players.clone_from(&self.players);
+            let mut players = HashMap::new();
+            // FIXME: 有没有更简单的方法？
+            for player in self.players.iter() {
+                players.insert(player.key().clone(), *player.value());
+            }
             players
         };
         let mut max_rank = usize::min_value();
         let mut min_rank = usize::max_value();
-        for player in players.iter() {
-            let (min_rank_i, max_rank_i, _length, _speed) = *player;
+        for &(min_rank_i, max_rank_i, _length, _speed) in players.values() {
             max_rank = usize::max(max_rank, max_rank_i);
             min_rank = usize::min(min_rank, min_rank_i);
         }
@@ -85,14 +88,13 @@ where
             return Vec::new();
         }
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
-        for player in players.iter() {
-            let (min_rank_i, max_rank_i, length, _speed) = player.value();
-            assert!(*min_rank_i >= min_rank && *min_rank_i <= max_rank);
-            assert!(*max_rank_i >= min_rank && *max_rank_i <= max_rank);
+        for &(min_rank_i, max_rank_i, length, _speed) in players.values() {
+            assert!(min_rank_i >= min_rank && min_rank_i <= max_rank);
+            assert!(max_rank_i >= min_rank && max_rank_i <= max_rank);
             let index_l = min_rank_i - min_rank;
             let index_r = max_rank_i - min_rank + 1;
-            cnt[index_l] += *length as isize;
-            cnt[index_r] -= *length as isize;
+            cnt[index_l] += length as isize;
+            cnt[index_r] -= length as isize;
         }
         let mut max_cnt = isize::min_value();
         let mut max_cnt_i = 0;
@@ -105,11 +107,9 @@ where
         }
         let target_rank = max_cnt_i + min_rank;
         let mut ans = Vec::new();
-        for player in players.iter() {
-            let id = player.key().clone();
-            let (min_rank_i, max_rank_i, length, _speed) = player.value();
-            if *min_rank_i <= target_rank && target_rank <= *max_rank_i {
-                ans.push((id, *length))
+        for (id, (min_rank_i, max_rank_i, length, _speed)) in players {
+            if min_rank_i <= target_rank && target_rank <= max_rank_i {
+                ans.push((id, length))
             }
         }
         ans
@@ -118,15 +118,17 @@ where
     pub fn get_player_states(&self) -> DashMap<T, u64> {
         let ans = DashMap::new();
         let players = {
-            let mut players = DashMap::new();
-            players.clone_from(&self.players);
+            let mut players = HashMap::new();
+            // FIXME: 有没有更简单的方法？
+            for player in self.players.iter() {
+                players.insert(player.key().clone(), *player.value());
+            }
             players
         };
 
         let mut max_rank = usize::min_value();
         let mut min_rank = usize::max_value();
-        for player in players.iter() {
-            let (min_rank_i, max_rank_i, _length, _speed) = *player;
+        for &(min_rank_i, max_rank_i, _length, _speed) in players.values() {
             max_rank = usize::max(max_rank, max_rank_i);
             min_rank = usize::min(min_rank, min_rank_i);
         }
@@ -138,8 +140,7 @@ where
         let mut cnt = vec![0isize; max_rank - min_rank + 2];
         let mut player_idx_l = vec![HashSet::new(); max_rank - min_rank + 2];
         let mut player_idx_r = vec![HashSet::new(); max_rank - min_rank + 2];
-        for player in players.iter() {
-            let (min_rank_i, max_rank_i, length, _speed) = *player.value();
+        for (id, &(min_rank_i, max_rank_i, length, _speed)) in players.iter() {
             assert!(min_rank_i >= min_rank && min_rank_i <= max_rank);
             assert!(max_rank_i >= min_rank && max_rank_i <= max_rank);
             let index_l = min_rank_i - min_rank;
@@ -149,8 +150,8 @@ where
             assert!(cnt[index_r] >= length as isize);
             cnt[index_l] += length as isize;
             cnt[index_r] -= length as isize;
-            player_idx_l[index_l].insert((player.key().clone(), length));
-            player_idx_r[index_r].insert((player.key().clone(), length));
+            player_idx_l[index_l].insert((id.clone(), length));
+            player_idx_r[index_r].insert((id.clone(), length));
         }
 
         for i in 1..cnt.len() {
@@ -161,8 +162,8 @@ where
         for (idx, &cnt_i) in cnt.iter().enumerate() {
             // println!("idx = {idx}, cnt_i = {cnt_i}, players = {:?}", cur_players);
             cur_players.extend(player_idx_l[idx].iter());
-            for player in cur_players.iter() {
-                ans.entry(player.0.clone())
+            for &(id, _length) in cur_players.iter() {
+                ans.entry(id.clone())
                     .and_modify(|e| *e = u64::max(*e, cnt_i as u64))
                     .or_insert(0);
             }
