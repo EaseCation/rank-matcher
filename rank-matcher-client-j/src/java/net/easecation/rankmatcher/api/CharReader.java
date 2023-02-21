@@ -40,11 +40,15 @@ public class CharReader {
         while (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) >= '0' && (byte)(this.message[this.currentPosition]) <= '9') {
             this.currentPosition++;
         }
-        int result = Integer.parseInt(new String(this.message, start, this.currentPosition - start));
-        if (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) == ',') {
-            this.currentPosition++;
+        try {
+            int result = Integer.parseInt(new String(this.message, start, this.currentPosition - start));
+            if (this.currentPosition < this.message.length && (byte)(this.message[this.currentPosition]) == ',') {
+                this.currentPosition++;
+            }
+            return result;
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Invalid number format: " + new String(this.message, start, this.currentPosition - start));
         }
-        return result;
     }
 
     public String readString() {

@@ -111,8 +111,8 @@ public class RankMatcherClient {
         sender.sendAsyncMessage(msg, f -> {});
     }
 
-    public void addPlayer(String arenaName, String playerName, int score, int length, int initRankDiff) {
-        Message msg = AddPlayerMessage.of(arenaName, playerName, score, length, initRankDiff);
+    public void addPlayer(String arenaName, String playerName, int score, int length, int initRankDiff, int speed) {
+        Message msg = AddPlayerMessage.of(arenaName, playerName, score, length, initRankDiff, speed);
         sender.sendAsyncMessage(msg, f -> {});
     }
 

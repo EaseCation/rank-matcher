@@ -191,7 +191,7 @@ async fn state_feedback_timer(
                     );
                 }
             }
-            println!("[状态反馈]({}) {:?}", addr, player_info);
+            println!("[状态反馈]({}) 玩家数量={}", addr, player_info.len());
             let packet = Packet::ConnectionState { player_info };
             let string = packet.to_string();
             let try_send = peer.unbounded_send(Message::Text(string));
