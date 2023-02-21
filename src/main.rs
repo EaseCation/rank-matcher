@@ -7,12 +7,14 @@ use futures_channel::mpsc::{self, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use lockfree_cuckoohash::LockFreeCuckooHash;
 use packet::Packet;
-use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::{
     net::{TcpListener, TcpStream},
     time,
 };
 use tungstenite::protocol::Message;
+use config::{Config, ConfigError, File, FileFormat};
+use lazy_static::lazy_static;
 
 // 客户端，也就是大厅服务器
 type Tx = UnboundedSender<Message>;
@@ -22,6 +24,16 @@ type Senders = Arc<dashmap::DashMap<String, SocketAddr>>;
 
 // 所有匹配池的列表。u64是这个匹配池一局的玩家数，超过这个数就匹配成功
 type Arenas = Arc<dashmap::DashMap<String, (u64, Arena<String>)>>;
+
+// 全局的配置文件
+fn load_config() -> Result<Config, ConfigError> {
+    let config = Config::builder().add_source(File::new("config.toml", FileFormat::Toml)).build()?;
+    Ok(config)
+}
+
+lazy_static! {
+    static ref CONFIG: Config = load_config().unwrap();
+}
 
 async fn handle_connection(
     peer_map: Peers,
@@ -274,8 +286,9 @@ async fn request_http_and_send_id(
     collected: DashMap<SocketAddr, Vec<(String, u64)>>,
     http_client: reqwest::Client,
 ) {
+    let api_url = CONFIG.get::<String>("api.url").unwrap_or("http://localhost:8081/customAddStage".to_string());
     let response = http_client
-        .post("http://localhost:8081/customAddStage")
+        .post(api_url)
         .json(&CreateStageRequest {
             game: arena.clone(),
             matching: format!("Rank#{}", rand::random::<u32>()),
@@ -385,17 +398,16 @@ async fn main() {
     let arenas = Arc::new(DashMap::new());
     let senders = Arc::new(DashMap::new());
 
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "[::]:12310".to_string());
-    let try_socket = TcpListener::bind(&addr).await;
+    let websocket_addr = CONFIG.get::<String>("websocket.addr").unwrap_or("[::]:12310".to_string());
+
+    let try_socket = TcpListener::bind(&websocket_addr).await;
     let listener = match try_socket {
         Ok(s) => s,
         Err(e) => {
             panic!("监听失败啦！错误信息：{}", e);
         }
     };
-    println!("正在监听: {}", addr);
+    println!("正在监听: {}", websocket_addr);
 
     let http_client = match reqwest::Client::builder().build() {
         Ok(ans) => ans,
