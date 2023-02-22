@@ -230,19 +230,20 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
             let mut matched = Vec::new();
             arena.rank_match(&mut matched);
             let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
-            let ans_matched = if num_matched > *num_players as usize {
+            let (ans_matched, enough_but_impossible) = if num_matched > *num_players as usize {
                 // 玩家数量大于需要匹配的数量，运行动态规划的背包问题算法
+                // println!("数量过大！{}", num_matched);
                 let num_players = *num_players as usize;
-                let a = matched
+                let a = matched.clone()
                     .iter()
                     .map(|(_name, length)| *length)
                     .collect::<Vec<_>>();
-                let mut dp = vec![vec![usize::MAX; num_players + 1]; num_matched];
+                let mut dp = vec![vec![usize::MAX; num_players + 1]; matched.len()];
                 let mut l = vec![vec![Vec::new(); num_players + 1]; 2];
                 for j in 0..=num_players {
                     dp[0][j] = usize::MAX;
                 }
-                for i in 0..num_matched {
+                for i in 0..matched.len() {
                     if dp[i][a[i]] > 1 {
                         dp[i][a[i]] = 1;
                         l[i % 2][a[i]].push(i);
@@ -267,20 +268,29 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                         }
                     }
                 }
-                let ans_list = &l[(num_matched - 1) % 2][num_players];
-                matched
+                let enough_but_impossible = dp[matched.len() - 1][num_players] == usize::MAX;
+                let ans_list = &l[(matched.len() - 1) % 2][num_players];
+                let ret = matched
                     .iter()
                     .enumerate()
                     .filter(|(idx, _)| ans_list.contains(idx))
                     .map(|(_, player)| player.clone())
-                    .collect()
+                    .collect();
+                (ret, enough_but_impossible)
             } else if num_matched == *num_players as usize {
                 // 刚好这么多玩家，不用分配了
-                matched
+                // println!("数量刚好！{}", num_matched);
+                (matched.clone(), false)
             } else {
                 // 玩家不够！返回空集
-                Vec::new()
+                // println!("数量不够！{}", num_matched);
+                (Vec::new(), false)
             };
+            if enough_but_impossible {
+                println!("[匹配池] {} 中应当匹配 {} 位玩家，但现有的小队无法匹配恰好这个玩家数的房间。这种情况比较罕见，服务器将在下一秒重试匹配算法。发生情况的玩家列表：{:?}",
+                arena_ref.key(), num_players, matched);
+                continue;
+            }
             let num_matched: usize = ans_matched.iter().map(|(_name, length)| length).sum();
             if num_matched == *num_players as usize {
                 // 匹配成功
@@ -314,9 +324,6 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                 for (player, _length) in &ans_matched {
                     senders.remove(player);
                 }
-            } else {
-                println!("[匹配池] {} 中应当匹配 {} 位玩家，但现有的所有玩家数量组成了某种巧妙的组合，以致于无法匹配恰好这个数量玩家的房间。这种情况比较罕见，服务器将在下一秒重试匹配算法。发生情况的玩家列表：{:?}",
-                arena_ref.key(), num_players, ans_matched);
             }
             arena.rank_update();
         }

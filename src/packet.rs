@@ -19,6 +19,7 @@ pub enum Packet {
         // 初始区间配置，用于加快匹配速度，初始区间为[rank - diff, rank + diff]。
         // 通常diff为0
         init_rank_diff: u64,
+        // 匹配速度。如果init_rank_diff为0且speed为0，这个玩家可能永远无法匹配成功
         speed: u64,
     },
     RemovePlayer {
