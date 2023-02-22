@@ -2,9 +2,11 @@ mod arena;
 mod packet;
 
 use arena::Arena;
+use config::{Config, ConfigError, File, FileFormat};
 use dashmap::DashMap;
 use futures_channel::mpsc::{self, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use lazy_static::lazy_static;
 use lockfree_cuckoohash::LockFreeCuckooHash;
 use packet::Packet;
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
@@ -13,8 +15,6 @@ use tokio::{
     time,
 };
 use tungstenite::protocol::Message;
-use config::{Config, ConfigError, File, FileFormat};
-use lazy_static::lazy_static;
 
 // 客户端，也就是大厅服务器
 type Tx = UnboundedSender<Message>;
@@ -27,7 +27,9 @@ type Arenas = Arc<dashmap::DashMap<String, (u64, Arena<String>)>>;
 
 // 全局的配置文件
 fn load_config() -> Result<Config, ConfigError> {
-    let config = Config::builder().add_source(File::new("config.toml", FileFormat::Toml)).build()?;
+    let config = Config::builder()
+        .add_source(File::new("config.toml", FileFormat::Toml))
+        .build()?;
     Ok(config)
 }
 
@@ -228,16 +230,68 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
             let mut matched = Vec::new();
             arena.rank_match(&mut matched);
             let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
-            if num_matched >= *num_players as usize {
+            let ans_matched = if num_matched > *num_players as usize {
+                // 玩家数量大于需要匹配的数量，运行动态规划的背包问题算法
+                let num_players = *num_players as usize;
+                let a = matched
+                    .iter()
+                    .map(|(_name, length)| *length)
+                    .collect::<Vec<_>>();
+                let mut dp = vec![vec![usize::MAX; num_players + 1]; num_matched];
+                let mut l = vec![vec![Vec::new(); num_players + 1]; 2];
+                for j in 0..=num_players {
+                    dp[0][j] = usize::MAX;
+                }
+                for i in 0..num_matched {
+                    if dp[i][a[i]] > 1 {
+                        dp[i][a[i]] = 1;
+                        l[i % 2][a[i]].push(i);
+                    }
+                    for j in 0..=num_players {
+                        if i >= 1 && j >= a[i] {
+                            if dp[i - 1][j - a[i]].saturating_add(1) < dp[i][j] {
+                                dp[i][j] = dp[i - 1][j - a[i]].saturating_add(1);
+                                let tmp = l[(i - 1) % 2][j - a[i]].clone();
+                                l[i % 2][j].clear();
+                                l[i % 2][j].extend(tmp);
+                                l[i % 2][j].push(i);
+                            }
+                        }
+                        if i >= 1 {
+                            if dp[i - 1][j] < dp[i][j] {
+                                dp[i][j] = dp[i - 1][j];
+                                let tmp = l[(i - 1) % 2][j].clone();
+                                l[i % 2][j].clear();
+                                l[i % 2][j].extend(tmp);
+                            }
+                        }
+                    }
+                }
+                let ans_list = &l[(num_matched - 1) % 2][num_players];
+                matched
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, _)| ans_list.contains(idx))
+                    .map(|(_, player)| player.clone())
+                    .collect()
+            } else if num_matched == *num_players as usize {
+                // 刚好这么多玩家，不用分配了
+                matched
+            } else {
+                // 玩家不够！返回空集
+                Vec::new()
+            };
+            let num_matched: usize = ans_matched.iter().map(|(_name, length)| length).sum();
+            if num_matched == *num_players as usize {
                 // 匹配成功
                 println!(
                     "[匹配池] {} 成功匹配了 {} 位玩家：{:?}",
                     arena_ref.key(),
-                    matched.len(),
-                    matched
+                    ans_matched.len(),
+                    ans_matched
                 );
                 let collected: DashMap<SocketAddr, Vec<(String, u64)>> = DashMap::new();
-                for (player, length) in matched.clone() {
+                for (player, length) in ans_matched.clone() {
                     let try_addr = senders.get(&player);
                     if let Some(addr) = try_addr {
                         collected
@@ -253,13 +307,16 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                     http_client.clone(),
                 ));
                 let guard = lockfree_cuckoohash::pin();
-                for (player, _length) in &matched {
+                for (player, _length) in &ans_matched {
                     arena.remove(player);
                 }
                 drop(guard);
-                for (player, _length) in &matched {
+                for (player, _length) in &ans_matched {
                     senders.remove(player);
                 }
+            } else {
+                println!("[匹配池] {} 中应当匹配 {} 位玩家，但现有的所有玩家数量组成了某种巧妙的组合，以致于无法匹配恰好这个数量玩家的房间。这种情况比较罕见，服务器将在下一秒重试匹配算法。发生情况的玩家列表：{:?}",
+                arena_ref.key(), num_players, ans_matched);
             }
             arena.rank_update();
         }
@@ -286,7 +343,9 @@ async fn request_http_and_send_id(
     collected: DashMap<SocketAddr, Vec<(String, u64)>>,
     http_client: reqwest::Client,
 ) {
-    let api_url = CONFIG.get::<String>("api.url").unwrap_or("http://localhost:8081/customAddStage".to_string());
+    let api_url = CONFIG
+        .get::<String>("api.url")
+        .unwrap_or("http://localhost:8081/customAddStage".to_string());
     let response = http_client
         .post(api_url)
         .json(&CreateStageRequest {
@@ -398,7 +457,9 @@ async fn main() {
     let arenas = Arc::new(DashMap::new());
     let senders = Arc::new(DashMap::new());
 
-    let websocket_addr = CONFIG.get::<String>("websocket.addr").unwrap_or("[::]:12310".to_string());
+    let websocket_addr = CONFIG
+        .get::<String>("websocket.addr")
+        .unwrap_or("[::]:12310".to_string());
 
     let try_socket = TcpListener::bind(&websocket_addr).await;
     let listener = match try_socket {
