@@ -240,7 +240,10 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                     .map(|(_name, length)| *length)
                     .collect::<Vec<_>>();
                 let mut dp = vec![vec![usize::MAX; num_players + 1]; matched.len()];
-                let mut l = vec![vec![Vec::new(); num_players + 1]; 2];
+                let mut l = [
+                    vec![Vec::new(); num_players + 1],
+                    vec![Vec::new(); num_players + 1],
+                ];
                 for j in 0..=num_players {
                     dp[0][j] = usize::MAX;
                 }
