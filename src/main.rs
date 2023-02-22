@@ -234,7 +234,8 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                 // 玩家数量大于需要匹配的数量，运行动态规划的背包问题算法
                 // println!("数量过大！{}", num_matched);
                 let num_players = *num_players as usize;
-                let a = matched.clone()
+                let a = matched
+                    .clone()
                     .iter()
                     .map(|(_name, length)| *length)
                     .collect::<Vec<_>>();
@@ -244,6 +245,9 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                     dp[0][j] = usize::MAX;
                 }
                 for i in 0..matched.len() {
+                    for j in 0..=num_players {
+                        l[i % 2][j].clear();
+                    }
                     if dp[i][a[i]] > 1 {
                         dp[i][a[i]] = 1;
                         l[i % 2][a[i]].push(i);
@@ -253,7 +257,6 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                             if dp[i - 1][j - a[i]].saturating_add(1) < dp[i][j] {
                                 dp[i][j] = dp[i - 1][j - a[i]].saturating_add(1);
                                 let tmp = l[(i - 1) % 2][j - a[i]].clone();
-                                l[i % 2][j].clear();
                                 l[i % 2][j].extend(tmp);
                                 l[i % 2][j].push(i);
                             }
@@ -262,7 +265,6 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                             if dp[i - 1][j] < dp[i][j] {
                                 dp[i][j] = dp[i - 1][j];
                                 let tmp = l[(i - 1) % 2][j].clone();
-                                l[i % 2][j].clear();
                                 l[i % 2][j].extend(tmp);
                             }
                         }
@@ -276,6 +278,7 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                     .filter(|(idx, _)| ans_list.contains(idx))
                     .map(|(_, player)| player.clone())
                     .collect();
+                // println!("返回值 = {:?}", ret);
                 (ret, enough_but_impossible)
             } else if num_matched == *num_players as usize {
                 // 刚好这么多玩家，不用分配了
