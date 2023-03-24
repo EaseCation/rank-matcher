@@ -229,6 +229,15 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
             arena.rank_match(&mut matched);
             let num_matched: usize = matched.iter().map(|(_name, length)| length).sum();
             if num_matched >= *num_players as usize {
+                // 如果 num_matched > num_players，那么需要从匹配成功的玩家中，踢出1人length的多余的队伍，直到匹配成功的玩家数量等于num_players
+                let extra = num_matched - *num_players as usize;
+                if extra > 0 {
+                    let (mut single_length, others): (Vec<_>, Vec<_>) = matched.into_iter().partition(|(_, length)| *length == 1);
+                    single_length.truncate(extra);
+                    matched = others;
+                    matched.extend(single_length);
+                }
+
                 // 匹配成功
                 println!(
                     "[匹配池] {} 成功匹配了 {} 位玩家：{:?}",
