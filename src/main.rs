@@ -233,7 +233,7 @@ async fn rank_timer(peers: Peers, arenas: Arenas, senders: Senders, http_client:
                 let extra = num_matched - *num_players as usize;
                 if extra > 0 {
                     let (mut single_length, others): (Vec<_>, Vec<_>) = matched.into_iter().partition(|(_, length)| *length == 1);
-                    single_length.truncate(extra);
+                    single_length.truncate(single_length.len().saturating_sub(extra));
                     matched = others;
                     matched.extend(single_length);
                 }
