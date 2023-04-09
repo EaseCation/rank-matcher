@@ -3,6 +3,7 @@ package net.easecation.rankmatcher;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.HttpClientCodec;
@@ -24,11 +25,12 @@ import net.easecation.rankmatcher.network.MessageHandler;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Log4j2
 public class RankMatcherClient {
 
-    private final EventLoopGroup loopGroup = new NioEventLoopGroup();
+    private EventLoopGroup loopGroup;
     private Channel channel = null;
     private MessageSender sender;
     private final MessageReceiver receiver;
@@ -55,15 +57,25 @@ public class RankMatcherClient {
     }
 
     public void start() throws Exception {
+        start(null);
+    }
+
+    public void start(Consumer<Bootstrap> setup) throws Exception {
         Bootstrap bootstrap = new Bootstrap();
+        if (setup != null) {
+            setup.accept(bootstrap);
+        }
+        if (bootstrap.config().group() == null) {
+            loopGroup = new NioEventLoopGroup();
+            bootstrap.group(loopGroup)
+                    .channel(NioSocketChannel.class);
+        }
         bootstrap
-                .group(loopGroup)
-                .channel(NioSocketChannel.class)
                 .option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(1024 * 1024))
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 2000)
-                .handler(new ChannelInitializer<NioSocketChannel>() {
+                .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
-                    protected void initChannel(NioSocketChannel channel) {
+                    protected void initChannel(SocketChannel channel) {
                         channel.pipeline()
                                 .addLast(new HttpClientCodec())
                                 .addLast(new HttpObjectAggregator(65535))
@@ -88,6 +100,9 @@ public class RankMatcherClient {
      * 关闭连接
      * */
     public boolean shutdown() {
+        if (loopGroup == null) {
+            return true;
+        }
         return loopGroup.shutdownGracefully().isSuccess();
     }
 
