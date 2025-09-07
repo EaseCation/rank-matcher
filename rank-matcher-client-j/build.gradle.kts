@@ -3,8 +3,7 @@ plugins {
 }
 
 dependencies {
-    compileOnly(libs.netty.all)
-    compileOnly(libs.log4j.api)
+    compileOnly(libs.netty.http)
     compileOnly(libs.log4j.slf4j2)
     compileOnly(project(":ECCommons"))
 }
